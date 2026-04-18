@@ -1,0 +1,130 @@
+---
+author: EntryTarget
+pubDatetime: 2026-05-09T12:00:00-03:00
+title: "Cripto e FX: multi-moeda, multi-ativo e PnL em tempo real"
+featured: true
+draft: false
+lang: pt
+translationKey: crypto-fx
+tags:
+  - caso-de-uso-04
+  - cripto
+  - multi-ativo
+description: "Quando cada conta pode carregar uma moeda diferente, o double-entry exige uma dimensão a mais: o ativo. É o que separa um ledger financeiro de uma tabela de saldos."
+---
+
+<Lede>
+  Multi-moeda parece uma feature "adicionar uma coluna currency" — até você
+  tentar calcular PnL. Porque PnL exige uma unidade de conta comum, e para
+  ter isso você precisa de uma tabela de preços, de um histórico de taxas,
+  e de regras claras sobre quando converter. Um ledger preparado para
+  multi-ativo resolve os três problemas de uma vez.
+</Lede>
+
+## O problema
+
+Na cripto e no FX, cada transação tem, na prática, duas moedas: o que saiu e o que entrou. "Vendi 0.5 BTC por R$ 175.000" não é um único movimento — são dois: uma saída de 0.5 BTC e uma entrada de R$ 175.000. O casamento entre eles é o trade. E o lucro ou prejuízo depende do preço médio de entrada do BTC, que só é rastreável com um ledger.
+
+## Contas com dimensão de ativo
+
+A diferença estrutural: cada conta tem um `asset` declarado. `user:u_42:crypto:BTC` e `user:u_42:crypto:ETH` são contas separadas. Nunca se misturam. Uma transação multi-asset simplesmente tem lançamentos em moedas diferentes — e a invariante muda: `Σ débitos = Σ créditos` vale por asset, não globalmente.
+
+| Conta | Asset | Significado |
+|---|---|---|
+| `user:<id>:cash:BRL` | BRL | Saldo em real |
+| `user:<id>:cash:USD` | USD | Saldo em dólar |
+| `user:<id>:crypto:BTC` | BTC | Holding de Bitcoin |
+| `user:<id>:crypto:ETH` | ETH | Holding de Ether |
+| `ops:pool:BTC` | BTC | Tesouraria de BTC |
+| `ops:pool:BRL` | BRL | Tesouraria em real |
+| `ops:revenue:spread:BTC-BRL` | BRL | Receita de spread no par |
+| `ops:pnl:realized:BTC` | BRL | PnL realizado em BTC (em BRL) |
+
+## Uma ordem de venda
+
+Usuário vende 0.5 BTC por R$ 175.000,00. Spread da plataforma 0.5% (R$ 875,00). O trade é uma transação única com lançamentos em dois assets:
+
+<Ledger
+  label="VENDA · 0.5 BTC → R$ 175.000,00 (BRL)"
+  rows={[
+    ["ops:pool:BRL",                 "",          "175000.00"],
+    ["user:u_42:cash:BRL",           "174125.00", ""],
+    ["ops:revenue:spread:BTC-BRL",   "875.00",    ""],
+  ]}
+/>
+
+<Ledger
+  label="VENDA · 0.5 BTC → R$ 175.000,00 (BTC)"
+  rows={[
+    ["user:u_42:crypto:BTC", "",         "0.50000000"],
+    ["ops:pool:BTC",         "0.50000000", ""],
+  ]}
+/>
+
+Confira: em BTC, débito 0.5 = crédito 0.5. Em BRL, débito R$ 175.000 = crédito R$ 174.125 + R$ 875. Cada asset fecha em zero, separadamente. É essa a regra que substitui o "Σ débitos = Σ créditos" do single-asset.
+
+## PnL realizado
+
+Para calcular o lucro na venda, o ledger precisa do custo médio do BTC que saiu. A convenção mais comum (WAC — weighted average cost) fica em uma view materializada por conta-asset. Na hora da venda, uma transação adicional lança a diferença entre o valor de venda e o custo médio em `ops:pnl:realized:BTC`.
+
+<Ledger
+  label="PNL REALIZADO · 0.5 BTC @ WAC R$ 310k → VENDA R$ 350k"
+  rows={[
+    ["ops:pnl:realized:BTC",      "",         "20000.00"],
+    ["ops:retained:earnings",     "20000.00", ""],
+  ]}
+/>
+
+Para o imposto, o histórico de lançamentos mostra todas as aquisições com data, preço e quantidade. A memória de cálculo sai direto do ledger — o fisco tem tudo que precisa.
+
+## Mark-to-market (não realizado)
+
+Para reporting interno, holdings são marcadas a mercado todo dia. Isso não toca as contas de asset, mas gera uma view `balance_in_BRL` que consulta a tabela de preços. O ledger mantém a verdade em unidades nativas; a camada de reporting faz a conversão.
+
+<Callout label="POR QUE MANTER NATIVO">
+  Converter tudo para BRL na hora do lançamento destrói informação. Ao
+  manter cada asset em sua unidade nativa, o ledger permite auditar
+  aquisições, recalcular PnL com qualquer método (WAC, FIFO, LIFO) e
+  explicar o balanço em qualquer data.
+</Callout>
+
+## Invariantes
+
+| Invariante | Por quê |
+|---|---|
+| Σ débitos = Σ créditos **por asset por transação** | Double-entry com dimensão extra |
+| Conta tem `asset` imutável | Impede lançar BTC em conta de BRL |
+| Saldo de `ops:pool:<asset>` ≥ Σ saldos de usuários no asset | Custódia real ≥ obrigação interna |
+| Conversões passam por rate source registrado | Auditoria de preço |
+
+<PullQuote attr="Compliance officer">
+  Em cripto, o regulador não te pergunta "quanto você tem". Te pergunta
+  "como você sabe quanto você tem".
+</PullQuote>
+
+## FAQ
+
+### Como integro com exchanges externas (Binance, Kraken)?
+
+Cada exchange é uma `ops:exchange:<name>:<asset>`. Depósitos e retiradas movimentam essas contas; trades dentro da exchange são espelhados no seu ledger via webhook. Reconciliação diária compara saldo reportado vs. saldo no seu livro.
+
+### Stablecoins — moeda ou cripto?
+
+Cripto. Sempre. A sua contabilidade interna precisa manter o ativo separado (USDC ≠ USD) porque o risco é diferente. Conversão para USD é uma transação explícita, com rate declarado.
+
+### E forks, airdrops, staking rewards?
+
+Cada um vira uma transação de origem `income:<tipo>`. O ledger não se importa se a fonte é trade, fork ou reward — todos são lançamentos com asset, quantidade, e momento.
+
+## Quando você precisa disso
+
+<NumberedList items={[
+  { n: 1, title: "Você custodia mais de uma moeda ou ativo", body: "A partir da segunda moeda, ledger multi-asset deixa de ser luxo." },
+  { n: 2, title: "Você calcula PnL (seu ou do cliente)", body: "Sem histórico de aquisição, PnL é chute." },
+  { n: 3, title: "Você reporta imposto sobre ganho de capital", body: "Receita quer memória de cálculo." },
+  { n: 4, title: "Você integra com mais de uma venue", body: "Cada venue traz um saldo; ledger é onde todos encontram." },
+]} />
+
+<CTA eyebrow="DEPLOY NO SEU AWS" href="https://entrytarget.com/" cta="entrytarget.com →">
+  Um ledger que é realmente seu.
+</CTA>

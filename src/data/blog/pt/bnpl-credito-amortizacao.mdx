@@ -1,0 +1,139 @@
+---
+author: EntryTarget
+pubDatetime: 2026-05-02T12:00:00-03:00
+title: "BNPL e crédito: amortização e juros que fecham todo dia"
+featured: true
+draft: false
+lang: pt
+translationKey: bnpl-credit
+tags:
+  - caso-de-uso-03
+  - credito
+  - bnpl
+description: "Emprestar dinheiro parece simples até o primeiro fechamento mensal. Com um ledger certo, provisionamento diário, juros acruais e write-off viram três queries — não três projetos."
+---
+
+<Lede>
+  Crédito é o produto financeiro mais contabilmente denso que existe. Cada
+  parcela gera juros por competência, amortização, eventual atraso,
+  provisionamento, e — se for o caso — write-off. Tudo isso precisa
+  reconciliar com o extrato do funding e com o balanço regulatório. Sem um
+  ledger, é impossível fechar o mês dentro do mês.
+</Lede>
+
+## O problema
+
+A maior parte das plataformas de BNPL começa calculando juros on-demand: "quando o cliente pagar, eu vejo quanto é". Isso quebra em dois momentos. Primeiro, no fechamento contábil — receita de juros precisa ser reconhecida por competência, não caixa. Segundo, no provisionamento — a perda esperada precisa ser estimada e lançada diariamente, não no dia do default.
+
+## Modelo de contas
+
+| Conta | Tipo | Significado |
+|---|---|---|
+| `loan:<id>:principal` | Ativo | Saldo devedor de principal |
+| `loan:<id>:interest:accrued` | Ativo | Juros competidos a receber |
+| `loan:<id>:fees:accrued` | Ativo | Tarifas a receber |
+| `ops:funding:equity` | Passivo | Funding via capital |
+| `ops:funding:fidc` | Passivo | Funding via FIDC |
+| `ops:revenue:interest` | Receita | Receita de juros reconhecida |
+| `ops:loss:provision` | Despesa | Provisionamento para perda |
+| `ops:allowance:loss` | Redutor de ativo | Contra-conta do principal |
+
+## Desembolso de um empréstimo
+
+Empréstimo de R$ 1.000,00 em 10 parcelas, taxa 3% a.m. No dia do desembolso, dois lançamentos:
+
+<Ledger
+  label="DESEMBOLSO · LOAN L_77 · R$ 1.000,00"
+  rows={[
+    ["loan:l_77:principal", "1000.00", ""],
+    ["ops:pool:pix",        "",        "1000.00"],
+  ]}
+/>
+
+## Competência diária de juros
+
+Todo dia, um job roda sobre todos os empréstimos ativos e lança juros por competência — mesmo que o cliente ainda não tenha pago. É isso que permite o fechamento do mês em dia 1: quando chega o dia 30, a receita já foi reconhecida dia a dia.
+
+<Ledger
+  label="ACCRUAL DIÁRIO · LOAN L_77 · DIA 15"
+  rows={[
+    ["loan:l_77:interest:accrued", "1.00", ""],
+    ["ops:revenue:interest",       "",     "1.00"],
+  ]}
+/>
+
+Valor simplificado para o exemplo. Em produção, o cálculo usa a convenção exata do contrato (pro-rata dia útil, base 360, etc.), mas o padrão do lançamento é sempre o mesmo: débito em `interest:accrued`, crédito em `revenue:interest`. Se no mês seguinte o cliente pagar, o recebimento debita `pool:pix` e credita `interest:accrued` — nenhuma receita é reconhecida duas vezes.
+
+## Recebimento de parcela
+
+<Ledger
+  label="PAGAMENTO · LOAN L_77 · PARCELA 1 · R$ 117,22"
+  rows={[
+    ["ops:pool:pix",               "117.22", ""],
+    ["loan:l_77:principal",        "",       "87.22"],
+    ["loan:l_77:interest:accrued", "",       "30.00"],
+  ]}
+/>
+
+## Provisionamento diário
+
+A perda esperada (PD × LGD × EAD) é calculada por empréstimo e lançada todo dia como despesa. Se o modelo de risco revisar para baixo, o estorno também vai para o ledger — e o histórico mostra, por dia, qual era a expectativa de perda da carteira.
+
+<Ledger
+  label="PROVISÃO DIÁRIA"
+  rows={[
+    ["ops:loss:provision",  "2.30", ""],
+    ["ops:allowance:loss",  "",     "2.30"],
+  ]}
+/>
+
+<Callout label="POR QUE DIÁRIO">
+  Provisionar só no fim do mês cria um buraco: no dia 15, o balanço não
+  reflete a realidade. Provisionamento diário mantém o ativo líquido sempre
+  correto e permite decisões de funding em tempo real.
+</Callout>
+
+## Write-off
+
+Quando um empréstimo é dado como perdido (tipicamente 180+ dias de atraso), duas coisas acontecem em uma única transação: o principal é baixado contra a allowance já provisionada, e o caso entra em cobrança. Se depois uma parte for recuperada, vira receita de "recovery" — não reversa a baixa.
+
+## Invariantes
+
+| Invariante | Por quê |
+|---|---|
+| Σ principal ativos = saldo da carteira | Balanço fecha com o relatório gerencial |
+| Σ `interest:accrued` = receita a receber | Competência nunca se perde |
+| `allowance:loss` ≤ Σ principal | Provisão nunca excede o ativo |
+| Todo pagamento referencia `loan_id` + `installment` | Rastreabilidade para cobrança e auditoria |
+
+<PullQuote attr="Visão do CFO">
+  Toda fintech de crédito que tem sucesso cedo ou tarde vira uma asset
+  manager. O ledger é a tese do fundo.
+</PullQuote>
+
+## FAQ
+
+### Como lido com renegociação?
+
+Uma renegociação é uma nova transação que extingue os saldos atuais e cria um novo empréstimo. O histórico do empréstimo original permanece; o novo tem um `renegotiated_from_loan_id`. Auditoria consegue reconstruir a cadeia.
+
+### E FIDC / cessão de crédito?
+
+Uma cessão move principal + juros competidos de `ops:funding:equity` para `ops:funding:fidc`, com reconhecimento do deságio na conta de despesa apropriada. Nada no saldo devedor do cliente muda.
+
+### Receita ao longo do tempo ou no pagamento?
+
+Regra brasileira (e IFRS 9): reconhecimento por competência. Juros são receita no dia em que competem, não no dia em que entram no caixa. O ledger enforça isso por construção.
+
+## Quando você precisa disso
+
+<NumberedList items={[
+  { n: 1, title: "Você empresta seu dinheiro ou de um fundo", body: "Balanço patrimonial com ativo de crédito precisa ser defensável." },
+  { n: 2, title: "Você tem mais de 10.000 empréstimos ativos", body: "Planilha deixa de escalar exatamente aí." },
+  { n: 3, title: "Você precisa fechar o mês em dia útil +2", body: "Sem competência diária, impossível." },
+  { n: 4, title: "Você vai emitir FIDC ou ceder carteira", body: "Auditor pede histórico lançamento a lançamento — ou não assina." },
+]} />
+
+<CTA eyebrow="DEPLOY NO SEU AWS" href="https://entrytarget.com/" cta="entrytarget.com →">
+  Um ledger que é realmente seu.
+</CTA>

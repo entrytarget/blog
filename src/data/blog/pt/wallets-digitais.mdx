@@ -1,0 +1,143 @@
+---
+author: EntryTarget
+pubDatetime: 2026-04-18T12:00:00-03:00
+title: "Wallets digitais: por que cada usuário merece o seu próprio subledger"
+featured: true
+draft: false
+lang: pt
+translationKey: wallets
+tags:
+  - caso-de-uso-01
+  - wallets
+  - arquitetura
+description: "Subcontas por usuário, float, settlements e yield. Uma arquitetura de ledger certa transforma cada uma dessas operações de problema em commodity."
+---
+
+<Lede>
+  Uma wallet digital parece simples por fora — o usuário tem um saldo, ele
+  aumenta, diminui, ele transfere. Por dentro, é um problema de contabilidade
+  de alta cardinalidade rodando em tempo real. Cada usuário é uma conta. Cada
+  interação é uma transação com pelo menos dois lançamentos. E o operador
+  precisa, a qualquer momento, ser capaz de responder três perguntas ao
+  regulador: onde está o dinheiro, de quem é, e como ele chegou aqui.
+</Lede>
+
+## O problema
+
+A tentação é começar com uma tabela `users` que tem uma coluna `balance`. Funciona em protótipo, falha em produção. No momento em que duas operações mutam o saldo em paralelo, o histórico deixa de reconciliar e você descobre, de madrugada, que o saldo agregado da plataforma não bate com o saldo da conta-pool no banco parceiro.
+
+O saldo não é a fonte da verdade. A sequência de lançamentos é. O saldo é um snapshot derivado — e se você não consegue reconstruí-lo a partir dos lançamentos, você não tem um ledger, você tem um contador com bugs.
+
+<Callout label="POR QUE DOUBLE-ENTRY">
+  Todo movimento de dinheiro em uma wallet afeta no mínimo duas contas: a do
+  usuário e alguma contrapartida (conta-pool, provedor de pagamento, receita,
+  imposto). Lançar os dois lados simultaneamente, com sinais opostos, torna
+  impossível que o livro fique "meio consistente". Ou a transação fecha, ou
+  é rejeitada.
+</Callout>
+
+## Modelo de contas
+
+Um bom plano de contas para wallet tem três camadas: contas de usuário (uma por wallet), contas operacionais (pool, receita, taxas) e contas de contrapartida externa (provedor PIX, parceiro de cartão). Os usuários vivem em um domínio próprio — muitas vezes milhões de contas — mas compartilham a mesma árvore de tipos.
+
+| Conta | Tipo | Normal | Exemplo |
+|---|---|---|---|
+| `user:<id>:cash` | Passivo | Credor | Saldo disponível do usuário |
+| `user:<id>:pending` | Passivo | Credor | Transações em confirmação |
+| `ops:pool:pix` | Ativo | Devedor | Saldo na conta-pool BACEN |
+| `ops:revenue:fees` | Receita | Credor | Taxas cobradas |
+| `ops:float:yield` | Receita | Credor | Rendimento do float |
+| `ext:provider:payins` | Contrapartida | Devedor | Recebíveis do provedor |
+
+## Uma transação, quatro perspectivas
+
+Considere um cash-in via PIX de R$ 100,00, com taxa de R$ 2,00 retida pela plataforma. Na visão do produto, "o usuário depositou cem reais". Na visão do ledger, três lançamentos precisam acontecer atomicamente:
+
+<Ledger
+  label="CASH-IN PIX · R$ 100,00 · TAXA R$ 2,00"
+  rows={[
+    ["ops:pool:pix",       "100.00", ""],
+    ["user:u_42:cash",     "",       "98.00"],
+    ["ops:revenue:fees",   "",       "2.00"],
+  ]}
+/>
+
+Somando: débitos R$ 100,00, créditos R$ 100,00. Fecha em zero. A plataforma ganhou R$ 2,00 de receita. O usuário ficou com R$ 98,00 disponíveis. O pool subiu R$ 100,00. Tudo isto em uma única transação atômica, com um único `transaction_id` que o compliance consegue puxar.
+
+## API da transação
+
+<JSONBlock label="POST /v1/transactions">
+{`{
+  "idempotency_key": "pix_in_01JCK7...",
+  "metadata": {
+    "source": "pix.inbound",
+    "end_to_end_id": "E18236120202604...",
+    "user_id": "u_42"
+  },
+  "entries": [
+    { "account": "ops:pool:pix",     "direction": "debit",  "amount": "100.00" },
+    { "account": "user:u_42:cash",   "direction": "credit", "amount": "98.00"  },
+    { "account": "ops:revenue:fees", "direction": "credit", "amount": "2.00"   }
+  ]
+}`}
+</JSONBlock>
+
+## Arquitetura no seu AWS
+
+O runtime do EntryTarget roda em uma subnet privada dentro da sua VPC. Sua aplicação fala com ele por gRPC interno — o tráfego nunca sai da sua conta. O Postgres transacional é seu, provisionado por IaC, com backup e criptografia usando chaves do seu KMS. O provedor PIX (ou outro banco parceiro) conversa com a sua aplicação, e só com ela. O ledger nunca expõe endpoints públicos.
+
+## Invariantes que não podem falhar
+
+| Invariante | Por quê | Onde é checada |
+|---|---|---|
+| Σ débitos = Σ créditos por transação | Double-entry; impossível de relaxar | Transaction commit |
+| Saldo do usuário ≥ 0 (salvo linhas de crédito) | Não permitir saldo negativo inadvertido | Pré-commit constraint |
+| Σ saldos de usuários ≤ saldo do pool | Reconciliação com a conta real no banco parceiro | Reconciliação diária |
+| Toda transação tem `idempotency_key` único | Retries seguros em rede instável | API gateway + DB |
+| Histórico é append-only | Auditoria e compliance | DB + KMS |
+
+## Reconciliação
+
+O maior buraco operacional em wallets que crescem rápido é a reconciliação entre o ledger interno e os extratos dos parceiros — BACEN, banco custodiante, bandeiras. Quando cada transação tem um `external_id` e um `transaction_id` internos amarrados, reconciliar vira uma operação de `JOIN`. Quando não tem, vira uma planilha.
+
+A reconciliação diária roda uma query simples: para cada entrada no extrato externo, existe exatamente um lançamento no ledger com o mesmo `end_to_end_id` e o mesmo valor. Divergências entram em uma fila de exceção. Em regime, uma wallet de milhões de usuários fecha o dia com zero ou poucas dezenas de exceções — não com centenas de milhares.
+
+## Float e yield
+
+Quando o saldo agregado dos usuários fica parado no pool overnight, ele rende. Essa receita — o float — é proprietária da plataforma, não do usuário (salvo quando você explicitamente remunera o saldo). Um ledger direito contabiliza o rendimento diariamente em `ops:float:yield` sem tocar no saldo dos usuários. Nada de cálculo manual em planilha no fim do mês.
+
+<PullQuote attr="Regra universal">
+  Se o seu saldo agregado não reconcilia com o extrato do banco parceiro,
+  você não tem um problema de wallet. Você tem um problema de solvência.
+</PullQuote>
+
+## FAQ
+
+### Preciso de double-entry mesmo se tenho uma única moeda?
+
+Sim. O benefício não vem da multi-moeda — vem da garantia matemática de que toda transação fecha. Single-entry em saldo escalar falha silenciosamente; double-entry não tem como falhar silenciosamente.
+
+### Onde armazeno o saldo do usuário?
+
+Você não armazena. Você deriva — `SELECT SUM(amount)` sobre a conta do usuário, ou uma view materializada mantida pelo ledger. Saldo é uma projeção; fonte de verdade é o lançamento.
+
+### Isso não é lento para milhões de usuários?
+
+Um ledger moderno indexa por conta + timestamp, e materializa saldos de forma incremental. Lê em milissegundos, escreve em milissegundos. A complexidade é de operação — não de performance.
+
+### Como lidar com reversões e chargebacks?
+
+Com uma nova transação de sentido oposto, referenciando a original via `reverses_transaction_id`. Nunca editando lançamentos antigos. O histórico permanece append-only e auditável.
+
+## Quando você precisa disso
+
+<NumberedList items={[
+  { n: 1, title: "Sua aplicação mantém saldo em nome do usuário", body: "Você custodia dinheiro alheio. Regulador e usuário esperam contas claras." },
+  { n: 2, title: "Você reconcilia com um ou mais parceiros externos", body: "Cada parceiro traz um arquivo, um extrato, um webhook. O ledger é o ponto comum." },
+  { n: 3, title: "Você cobra taxas variáveis por operação", body: "Sem ledger, receita se perde ou se conta em dobro." },
+  { n: 4, title: "Você precisa fechar o mês em dia", body: "Sem ledger, fechamento é reconstrução manual. Com ledger, é um relatório." },
+]} />
+
+<CTA eyebrow="DEPLOY NO SEU AWS" href="https://entrytarget.com/" cta="entrytarget.com →">
+  Um ledger que é realmente seu.
+</CTA>

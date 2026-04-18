@@ -1,0 +1,125 @@
+---
+author: EntryTarget
+pubDatetime: 2026-04-25T12:00:00-03:00
+title: "Marketplaces: split payments, escrow and payouts without a spreadsheet"
+featured: true
+draft: false
+lang: en
+translationKey: marketplaces
+tags:
+  - use-case-02
+  - marketplaces
+  - escrow
+description: "In a marketplace the money is never the marketplace's — it belongs to the seller, the buyer, shipping, tax and the card network. A ledger is the only place they all fit."
+---
+
+<Lede>
+  A marketplace is an accounting problem disguised as a product. A single
+  R$ 200 purchase fires off, in seconds, a split between seller, platform,
+  shipping, tax, cashback and the card gateway. On top of that, the money
+  can sit in escrow for 30 days before it turns into a payout. Trying to
+  solve this with `balance` columns lands you in an audit with qualifications.
+</Lede>
+
+## The problem
+
+Three dynamics break marketplaces without a ledger: (a) multiple counterparties in a single purchase, (b) an escrow window between capture and payout, (c) partial reversals (refund the customer but not the shipping). Each of them, alone, already calls for double-entry. Combined, they demand a ledger with hierarchical per-order accounts.
+
+## Chart of accounts
+
+The trick is giving every order its own subledger — ephemeral accounts that exist while the order is in escrow and settle at payout time. That enables surgical reversals and per-order auditing, instead of sweeping months of transactions to find a value.
+
+| Account | Kind | When it moves |
+|---|---|---|
+| `order:<id>:escrow:seller` | Liability | On capture, seller's share |
+| `order:<id>:escrow:shipping` | Liability | On capture, shipping share |
+| `order:<id>:escrow:platform` | Liability | On capture, platform take rate |
+| `ops:pool:card` | Asset | On capture, balance received from the gateway |
+| `seller:<id>:payable` | Liability | On release, amount owed to the seller |
+| `ops:revenue:takerate` | Revenue | On release, take rate recognized |
+| `ops:tax:withholding` | Tax liability | On release, withholding for remittance |
+
+## Capturing an order
+
+A R$ 200.00 order: R$ 160.00 to the seller, R$ 20.00 shipping (marketplace passes it through), R$ 20.00 platform fee. The card captures R$ 200.00, the gateway retains R$ 6.00 (3% MDR). Five entries, one atomic transaction:
+
+<Ledger
+  label="CAPTURE · ORDER O_8821 · R$ 200.00"
+  rows={[
+    ["ops:pool:card",                "194.00", ""],
+    ["ops:expense:mdr",              "6.00",   ""],
+    ["order:o_8821:escrow:seller",   "",       "160.00"],
+    ["order:o_8821:escrow:shipping", "",       "20.00"],
+    ["order:o_8821:escrow:platform", "",       "20.00"],
+  ]}
+/>
+
+Notice: no revenue has been recognized yet. It's all in escrow. The seller only has a right to the amount after the dispute window closes. The platform only recognizes its take rate at that moment — before then, it's a liability, not revenue.
+
+## Release (after the escrow window)
+
+<Ledger
+  label="RELEASE · ORDER O_8821"
+  rows={[
+    ["order:o_8821:escrow:seller",    "160.00", ""],
+    ["seller:s_114:payable",          "",       "156.00"],
+    ["ops:tax:withholding",           "",       "4.00"],
+    ["order:o_8821:escrow:platform",  "20.00",  ""],
+    ["ops:revenue:takerate",          "",       "20.00"],
+  ]}
+/>
+
+## Partial refunds
+
+The customer returns the product but wants to keep the shipping paid (rare, but the inverse is common). In a ledger with per-order subaccounts, the reversal is surgical: reverse only `escrow:seller` and `escrow:platform`, leave `escrow:shipping` untouched. No spreadsheet, no manual adjustment — just a new transaction with `reverses_transaction_id` pointing at the capture.
+
+<Callout label="LEDGER RULE">
+  You never edit an entry. A refund is a new transaction, with opposite
+  signs, that references the original. The history stays intact — and
+  auditable for tax, card networks and the seller.
+</Callout>
+
+## Invariants
+
+| Invariant | Why |
+|---|---|
+| Σ escrow of the order = captured amount − MDR | What came in must be allocated |
+| Released escrow ≤ captured escrow | Can't release more than you have |
+| Seller payout = Σ releases − withholdings | Seller close matches the real transfer |
+| Every transaction references an `order_id` | End-to-end traceability |
+
+## Batch payout
+
+Once a day, every `seller:<id>:payable` with a positive balance enters a transfer batch. The ledger emits a CNAB/PIX file with the per-seller totals; when the bank confirms, one single transaction debits all the `payable` accounts and credits `ops:pool:pix`. If one payout fails at the bank, only that seller keeps a balance — the others are already settled.
+
+<PullQuote attr="Operational principle">
+  The ledger doesn't tell you who your user is. It tells you who owns the
+  next real you're about to move.
+</PullQuote>
+
+## FAQ
+
+### Won't per-order subaccounts blow up the account count?
+
+Yes — by design. A marketplace with 10M orders/year has ~40M active subaccounts, but most of them live only a few days (from escrow to release) and then go dormant. Storage cost is negligible, and the audit benefit is massive.
+
+### What about disputes that last months?
+
+The escrow account stays open while the dispute is live. It can become a `hold` transaction that moves into `dispute:hold` until resolution. The important thing is that the money never becomes revenue until the dispute closes.
+
+### How do I integrate with multiple gateways?
+
+Each gateway has its own `ops:pool:<gateway>` and `ops:expense:mdr:<gateway>`. The ledger doesn't care where the money came from — only that it came in. Daily reconciliation is per pool.
+
+## When you need this
+
+<NumberedList items={[
+  { n: 1, title: "You intermediate transactions between parties", body: "The money passes through your hands but isn't yours." },
+  { n: 2, title: "You have an escrow or refund window", body: "Revenue isn't recognized the moment you capture." },
+  { n: 3, title: "You pay multiple sellers in batch", body: "The ledger generates the batch; not the other way around." },
+  { n: 4, title: "You withhold taxes or regulatory fees", body: "Every withholding is a tax-liability account with its own remittance rhythm." },
+]} />
+
+<CTA eyebrow="DEPLOY IN YOUR AWS" href="https://entrytarget.com/">
+  A ledger that's actually yours.
+</CTA>

@@ -1,0 +1,129 @@
+---
+author: EntryTarget
+pubDatetime: 2026-05-09T12:00:00-03:00
+title: "Crypto and FX: multi-currency, multi-asset and real-time PnL"
+featured: true
+draft: false
+lang: en
+translationKey: crypto-fx
+tags:
+  - use-case-04
+  - crypto
+  - multi-asset
+description: "When every account can carry a different currency, double-entry needs one extra dimension: the asset. It's what separates a financial ledger from a balance table."
+---
+
+<Lede>
+  Multi-currency looks like an "add a currency column" feature — until you
+  try to compute PnL. Because PnL requires a common unit of account, and to
+  have that you need a price table, a rates history and clear rules on when
+  to convert. A ledger built for multi-asset solves all three at once.
+</Lede>
+
+## The problem
+
+In crypto and FX, every transaction has, in practice, two currencies: what left and what came in. "I sold 0.5 BTC for R$ 175,000" isn't a single movement — it's two: an outflow of 0.5 BTC and an inflow of R$ 175,000. The match between them is the trade. And the gain or loss depends on the average entry price of the BTC, which is only traceable via a ledger.
+
+## Accounts with an asset dimension
+
+The structural difference: every account has a declared `asset`. `user:u_42:crypto:BTC` and `user:u_42:crypto:ETH` are separate accounts. They never mix. A multi-asset transaction is simply one with entries in different currencies — and the invariant changes: `Σ debits = Σ credits` holds per asset, not globally.
+
+| Account | Asset | Meaning |
+|---|---|---|
+| `user:<id>:cash:BRL` | BRL | Real balance |
+| `user:<id>:cash:USD` | USD | Dollar balance |
+| `user:<id>:crypto:BTC` | BTC | Bitcoin holdings |
+| `user:<id>:crypto:ETH` | ETH | Ether holdings |
+| `ops:pool:BTC` | BTC | BTC treasury |
+| `ops:pool:BRL` | BRL | BRL treasury |
+| `ops:revenue:spread:BTC-BRL` | BRL | Spread revenue on the pair |
+| `ops:pnl:realized:BTC` | BRL | BTC realized PnL (in BRL) |
+
+## A sell order
+
+The user sells 0.5 BTC for R$ 175,000.00. Platform spread 0.5% (R$ 875.00). The trade is a single transaction with entries in two assets:
+
+<Ledger
+  label="SELL · 0.5 BTC → R$ 175,000.00 (BRL)"
+  rows={[
+    ["ops:pool:BRL",                 "",          "175000.00"],
+    ["user:u_42:cash:BRL",           "174125.00", ""],
+    ["ops:revenue:spread:BTC-BRL",   "875.00",    ""],
+  ]}
+/>
+
+<Ledger
+  label="SELL · 0.5 BTC → R$ 175,000.00 (BTC)"
+  rows={[
+    ["user:u_42:crypto:BTC", "",         "0.50000000"],
+    ["ops:pool:BTC",         "0.50000000", ""],
+  ]}
+/>
+
+Check: in BTC, debit 0.5 = credit 0.5. In BRL, debit R$ 175,000 = credit R$ 174,125 + R$ 875. Each asset nets to zero, separately. That's the rule that replaces single-asset "Σ debits = Σ credits".
+
+## Realized PnL
+
+To compute the gain on the sale, the ledger needs the average cost of the BTC that left. The most common convention (WAC — weighted average cost) lives in a materialized view per account-asset. At sale time, an additional transaction books the difference between sale value and average cost into `ops:pnl:realized:BTC`.
+
+<Ledger
+  label="REALIZED PNL · 0.5 BTC @ WAC R$ 310k → SALE R$ 350k"
+  rows={[
+    ["ops:pnl:realized:BTC",      "",         "20000.00"],
+    ["ops:retained:earnings",     "20000.00", ""],
+  ]}
+/>
+
+For tax purposes, the entry history shows every acquisition with date, price and quantity. The supporting calculation comes straight out of the ledger — the tax authority gets everything it needs.
+
+## Mark-to-market (unrealized)
+
+For internal reporting, holdings are marked to market daily. That doesn't touch the asset accounts, but generates a `balance_in_BRL` view that queries the price table. The ledger keeps truth in native units; the reporting layer does the conversion.
+
+<Callout label="WHY KEEP IT NATIVE">
+  Converting everything to BRL at posting time destroys information. By
+  keeping each asset in its native unit, the ledger lets you audit
+  acquisitions, recompute PnL with any method (WAC, FIFO, LIFO) and
+  explain the balance on any date.
+</Callout>
+
+## Invariants
+
+| Invariant | Why |
+|---|---|
+| Σ debits = Σ credits **per asset per transaction** | Double-entry with an extra dimension |
+| Account `asset` is immutable | Prevents posting BTC on a BRL account |
+| `ops:pool:<asset>` balance ≥ Σ user balances in the asset | Real custody ≥ internal obligation |
+| Conversions run through a registered rate source | Price audit trail |
+
+<PullQuote attr="Compliance officer">
+  In crypto, the regulator doesn't ask you "how much do you have". They
+  ask you "how do you know how much you have".
+</PullQuote>
+
+## FAQ
+
+### How do I integrate with external exchanges (Binance, Kraken)?
+
+Each exchange is an `ops:exchange:<name>:<asset>`. Deposits and withdrawals move those accounts; trades inside the exchange are mirrored in your ledger via webhook. Daily reconciliation compares reported balance vs. your books.
+
+### Stablecoins — currency or crypto?
+
+Crypto. Always. Your internal accounting must keep the asset separate (USDC ≠ USD) because the risk is different. Converting into USD is an explicit transaction, with a declared rate.
+
+### Forks, airdrops, staking rewards?
+
+Each becomes a transaction of origin `income:<type>`. The ledger doesn't care whether the source is trade, fork or reward — they're all entries with asset, quantity and moment.
+
+## When you need this
+
+<NumberedList items={[
+  { n: 1, title: "You custody more than one currency or asset", body: "From the second currency on, multi-asset ledger stops being a luxury." },
+  { n: 2, title: "You compute PnL (yours or the customer's)", body: "Without an acquisition history, PnL is a guess." },
+  { n: 3, title: "You report capital-gain tax", body: "The tax authority wants a calculation trail." },
+  { n: 4, title: "You integrate with more than one venue", body: "Every venue brings a balance; the ledger is where they all meet." },
+]} />
+
+<CTA eyebrow="DEPLOY IN YOUR AWS" href="https://entrytarget.com/">
+  A ledger that's actually yours.
+</CTA>

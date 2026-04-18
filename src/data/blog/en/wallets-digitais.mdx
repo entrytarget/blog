@@ -1,0 +1,143 @@
+---
+author: EntryTarget
+pubDatetime: 2026-04-18T12:00:00-03:00
+title: "Digital wallets: why every user deserves their own subledger"
+featured: true
+draft: false
+lang: en
+translationKey: wallets
+tags:
+  - use-case-01
+  - wallets
+  - architecture
+description: "Per-user subledgers, float, settlements and yield. The right ledger architecture turns each of these from a problem into a commodity."
+---
+
+<Lede>
+  A digital wallet looks simple on the outside — the user has a balance, it
+  goes up, it goes down, they transfer. On the inside, it's a high-cardinality
+  accounting problem running in real time. Every user is an account. Every
+  interaction is a transaction with at least two entries. And the operator
+  has to answer three questions for the regulator at any moment: where is
+  the money, who owns it, and how did it get here.
+</Lede>
+
+## The problem
+
+The temptation is to start with a `users` table that has a `balance` column. It works in a prototype, it breaks in production. The moment two operations mutate the balance in parallel, the history stops reconciling and you discover, at 3 a.m., that the platform's aggregate balance doesn't match the pool account at the partner bank.
+
+The balance is not the source of truth. The sequence of entries is. The balance is a derived snapshot — and if you can't rebuild it from the entries, you don't have a ledger, you have a counter with bugs.
+
+<Callout label="WHY DOUBLE-ENTRY">
+  Every movement of money in a wallet touches at least two accounts: the
+  user's and some counterparty (pool account, payment provider, revenue,
+  tax). Posting both sides simultaneously, with opposite signs, makes it
+  impossible for the book to be "half-consistent". Either the transaction
+  balances, or it is rejected.
+</Callout>
+
+## Chart of accounts
+
+A good chart of accounts for a wallet has three layers: user accounts (one per wallet), operational accounts (pool, revenue, fees) and external counterparty accounts (instant-transfer provider, card partner). Users live in their own domain — often millions of accounts — but share the same tree of types.
+
+| Account | Kind | Normal | Example |
+|---|---|---|---|
+| `user:<id>:cash` | Liability | Credit | User's available balance |
+| `user:<id>:pending` | Liability | Credit | Transactions being confirmed |
+| `ops:pool:pix` | Asset | Debit | Pool balance at the central-bank rail |
+| `ops:revenue:fees` | Revenue | Credit | Fees collected |
+| `ops:float:yield` | Revenue | Credit | Yield on the float |
+| `ext:provider:payins` | Counterparty | Debit | Receivables from the provider |
+
+## One transaction, four perspectives
+
+Consider an instant-transfer cash-in of R$ 100.00, with a R$ 2.00 fee retained by the platform. In the product's view, "the user deposited a hundred reais." In the ledger's view, three entries must happen atomically:
+
+<Ledger
+  label="INSTANT-TRANSFER CASH-IN · R$ 100.00 · FEE R$ 2.00"
+  rows={[
+    ["ops:pool:pix",       "100.00", ""],
+    ["user:u_42:cash",     "",       "98.00"],
+    ["ops:revenue:fees",   "",       "2.00"],
+  ]}
+/>
+
+Adding up: debits R$ 100.00, credits R$ 100.00. Net zero. The platform earned R$ 2.00 of revenue. The user is R$ 98.00 richer in available balance. The pool went up by R$ 100.00. All of it in a single atomic transaction, with a single `transaction_id` compliance can pull on demand.
+
+## Transaction API
+
+<JSONBlock label="POST /v1/transactions">
+{`{
+  "idempotency_key": "pix_in_01JCK7...",
+  "metadata": {
+    "source": "pix.inbound",
+    "end_to_end_id": "E18236120202604...",
+    "user_id": "u_42"
+  },
+  "entries": [
+    { "account": "ops:pool:pix",     "direction": "debit",  "amount": "100.00" },
+    { "account": "user:u_42:cash",   "direction": "credit", "amount": "98.00"  },
+    { "account": "ops:revenue:fees", "direction": "credit", "amount": "2.00"   }
+  ]
+}`}
+</JSONBlock>
+
+## Architecture in your AWS
+
+EntryTarget's runtime sits on a private subnet inside your VPC. Your application talks to it over internal gRPC — traffic never leaves your account. The transactional Postgres is yours, provisioned via IaC, encrypted with keys from your KMS. The payment provider (or partner bank) talks to your application, and only to your application. The ledger never exposes public endpoints.
+
+## Invariants that must not fail
+
+| Invariant | Why | Enforced at |
+|---|---|---|
+| Σ debits = Σ credits per transaction | Double-entry; no way to relax it | Transaction commit |
+| User balance ≥ 0 (unless a credit line is attached) | No accidental negative balances | Pre-commit constraint |
+| Σ user balances ≤ pool balance | Reconciliation with the real partner-bank account | Daily reconciliation |
+| Every transaction carries a unique `idempotency_key` | Safe retries under flaky networks | API gateway + DB |
+| History is append-only | Audit and compliance | DB + KMS |
+
+## Reconciliation
+
+The biggest operational hole in fast-growing wallets is reconciliation between the internal ledger and partners' statements — central bank, custodian bank, card networks. When every transaction has an `external_id` bound to a `transaction_id`, reconciliation becomes a `JOIN`. When it doesn't, it becomes a spreadsheet.
+
+The daily reconciliation runs a simple query: for every row on the external statement, there is exactly one matching ledger entry with the same `end_to_end_id` and the same amount. Mismatches land in an exception queue. Steady-state, a wallet with millions of users closes the day with zero or a few dozen exceptions — not hundreds of thousands.
+
+## Float and yield
+
+When the aggregate user balance sits overnight in the pool, it earns. That revenue — the float — belongs to the platform, not to the user (unless you explicitly pay interest on the balance). A proper ledger books the yield daily into `ops:float:yield` without touching any user balance. No manual spreadsheet math at month-end.
+
+<PullQuote attr="Universal rule">
+  If your aggregate balance doesn't reconcile with the partner bank's
+  statement, you don't have a wallet problem. You have a solvency problem.
+</PullQuote>
+
+## FAQ
+
+### Do I need double-entry even with a single currency?
+
+Yes. The benefit isn't multi-currency — it's the mathematical guarantee that every transaction balances. Single-entry on a scalar balance fails silently; double-entry cannot fail silently.
+
+### Where do I store the user's balance?
+
+You don't. You derive it — `SELECT SUM(amount)` over the user's account, or an incrementally materialized view the ledger maintains. Balance is a projection; the entry is the source of truth.
+
+### Isn't that slow for millions of users?
+
+A modern ledger indexes by account + timestamp and materializes balances incrementally. Reads in milliseconds, writes in milliseconds. The complexity is operational — not performance.
+
+### How do I handle reversals and chargebacks?
+
+With a new transaction of opposite direction that references the original via `reverses_transaction_id`. Never by editing old entries. The history stays append-only and auditable.
+
+## When you need this
+
+<NumberedList items={[
+  { n: 1, title: "Your application holds balance on behalf of the user", body: "You are custodying someone else's money. Both the regulator and the user expect clean books." },
+  { n: 2, title: "You reconcile with one or more external partners", body: "Each partner ships a file, a statement, a webhook. The ledger is the common point." },
+  { n: 3, title: "You charge variable fees per operation", body: "Without a ledger, revenue leaks or gets double-counted." },
+  { n: 4, title: "You have to close the month on time", body: "Without a ledger, closing is manual reconstruction. With a ledger, it's a report." },
+]} />
+
+<CTA eyebrow="DEPLOY IN YOUR AWS" href="https://entrytarget.com/">
+  A ledger that's actually yours.
+</CTA>

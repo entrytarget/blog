@@ -1,0 +1,125 @@
+---
+author: EntryTarget
+pubDatetime: 2026-04-25T12:00:00-03:00
+title: "Marketplaces: split de pagamentos, escrow e payouts sem planilha"
+featured: true
+draft: false
+lang: pt
+translationKey: marketplaces
+tags:
+  - caso-de-uso-02
+  - marketplaces
+  - escrow
+description: "Em marketplaces, o dinheiro nunca é do marketplace — é do vendedor, do comprador, do frete, do imposto e do cartão. Um ledger é o único lugar onde todos cabem."
+---
+
+<Lede>
+  Marketplace é um problema contábil disfarçado de produto. Uma única compra
+  de R$ 200 aciona, em segundos, um split entre vendedor, plataforma, frete,
+  imposto, cashback e o gateway de cartão. Em cima disso, o dinheiro pode
+  ficar em escrow por 30 dias antes de virar payout. Tentar resolver isso
+  com colunas de `balance` acaba em auditoria com ressalva.
+</Lede>
+
+## O problema
+
+Três dinâmicas fazem marketplaces quebrarem sem um ledger: (a) múltiplas contrapartidas em uma única compra, (b) janela de escrow entre captura e payout, (c) reversões parciais (reembolso do cliente mas não do frete). Cada uma delas, sozinha, já exige double-entry. Combinadas, exigem um ledger com contas hierárquicas por pedido.
+
+## Modelo de contas
+
+O segredo é dar a cada pedido um subledger próprio — contas efêmeras que existem enquanto o pedido está em escrow e são liquidadas no payout. Isso permite estornos cirúrgicos e auditoria por pedido, em vez de varrer meses de transações para achar um valor.
+
+| Conta | Tipo | Quando é movimentada |
+|---|---|---|
+| `order:<id>:escrow:seller` | Passivo | Na captura, receita do vendedor |
+| `order:<id>:escrow:shipping` | Passivo | Na captura, parcela de frete |
+| `order:<id>:escrow:platform` | Passivo | Na captura, take rate |
+| `ops:pool:card` | Ativo | Na captura, saldo recebido do gateway |
+| `seller:<id>:payable` | Passivo | No release, liberação do escrow |
+| `ops:revenue:takerate` | Receita | No release, reconhecimento |
+| `ops:tax:withholding` | Passivo fiscal | No release, retenção para recolhimento |
+
+## A captura de um pedido
+
+Pedido de R$ 200,00: R$ 160,00 para o vendedor, R$ 20,00 de frete (marketplace repassa), R$ 20,00 de taxa da plataforma. Cartão captura R$ 200,00, gateway retém R$ 6,00 (3% MDR). Cinco lançamentos, uma transação atômica:
+
+<Ledger
+  label="CAPTURA · PEDIDO O_8821 · R$ 200,00"
+  rows={[
+    ["ops:pool:card",                "194.00", ""],
+    ["ops:expense:mdr",              "6.00",   ""],
+    ["order:o_8821:escrow:seller",   "",       "160.00"],
+    ["order:o_8821:escrow:shipping", "",       "20.00"],
+    ["order:o_8821:escrow:platform", "",       "20.00"],
+  ]}
+/>
+
+Observe: a receita ainda não foi reconhecida. Está em escrow. O vendedor só tem direito ao valor depois do prazo de disputa. A plataforma só reconhece a take rate nesse momento — antes disso, é obrigação, não receita.
+
+## O release (após o prazo de escrow)
+
+<Ledger
+  label="RELEASE · PEDIDO O_8821"
+  rows={[
+    ["order:o_8821:escrow:seller",    "160.00", ""],
+    ["seller:s_114:payable",          "",       "156.00"],
+    ["ops:tax:withholding",           "",       "4.00"],
+    ["order:o_8821:escrow:platform",  "20.00",  ""],
+    ["ops:revenue:takerate",          "",       "20.00"],
+  ]}
+/>
+
+## Reembolsos parciais
+
+O cliente devolve o produto mas quer manter o frete pago (cenário raro, mas comum o inverso). Em um ledger com subcontas por pedido, o estorno é cirúrgico: reverter só `escrow:seller` e `escrow:platform`, deixar `escrow:shipping` intacto. Nenhuma planilha, nenhum ajuste manual — é uma única transação com `reverses_transaction_id` apontando para a captura.
+
+<Callout label="REGRA DO LEDGER">
+  Você nunca edita um lançamento. Reembolso é uma nova transação, com sinais
+  invertidos, que referencia a original. O histórico permanece íntegro — e
+  auditável para o fisco, para a operadora de cartão e para o vendedor.
+</Callout>
+
+## Invariantes
+
+| Invariante | Por quê |
+|---|---|
+| Σ escrow do pedido = valor capturado − MDR | O que entrou deve estar alocado |
+| Escrow liberado ≤ escrow capturado | Não pode liberar mais do que tem |
+| Payout ao vendedor = Σ releases − retenções | Fechamento por vendedor bate com transferência real |
+| Toda transação referencia um `order_id` | Rastreabilidade ponta a ponta |
+
+## Payout em lote
+
+Uma vez por dia, todos os `seller:<id>:payable` com saldo positivo entram em um lote de transferência. O ledger emite um arquivo CNAB/PIX com a soma por vendedor; quando o banco confirma, uma única transação debita todos os `payable` e credita `ops:pool:pix`. Se um payout falha no banco, só aquele vendedor permanece com saldo — os outros já estão liquidados.
+
+<PullQuote attr="Princípio operacional">
+  O ledger não te diz quem é o seu usuário. Ele te diz quem é o dono do
+  próximo real que você vai movimentar.
+</PullQuote>
+
+## FAQ
+
+### Subcontas por pedido não explodem o número de contas?
+
+Sim — e é intencional. Um marketplace com 10M de pedidos/ano tem ~40M de subcontas ativas, mas a maioria vive poucos dias (do escrow ao release) e depois dorme. O custo de storage é desprezível, e o benefício auditorial é enorme.
+
+### E disputas que duram meses?
+
+A conta de escrow fica aberta enquanto a disputa corre. Pode virar uma transação de `hold` que move para `dispute:hold` até a resolução. O importante é que o dinheiro nunca vira receita até a disputa fechar.
+
+### Como integro com múltiplos gateways?
+
+Cada gateway tem sua própria `ops:pool:<gateway>` e `ops:expense:mdr:<gateway>`. O ledger não se importa de onde o dinheiro veio — só que entrou. Reconciliação diária é por pool.
+
+## Quando você precisa disso
+
+<NumberedList items={[
+  { n: 1, title: "Você intermedeia transações entre partes", body: "O dinheiro passa pelas suas mãos mas não é seu." },
+  { n: 2, title: "Você tem janela de escrow ou reembolso", body: "Receita não é reconhecida no ato da captura." },
+  { n: 3, title: "Você paga múltiplos vendedores em lote", body: "O ledger gera o lote; não o contrário." },
+  { n: 4, title: "Você retém impostos ou taxas regulatórias", body: "Cada retenção é uma conta de passivo fiscal com seu próprio ritmo de recolhimento." },
+]} />
+
+<CTA eyebrow="DEPLOY NO SEU AWS" href="https://entrytarget.com/" cta="entrytarget.com →">
+  Um ledger que é realmente seu.
+</CTA>

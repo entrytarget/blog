@@ -1,0 +1,140 @@
+---
+author: EntryTarget
+pubDatetime: 2026-05-02T12:00:00-03:00
+title: "BNPL and credit: amortization and interest that close every day"
+featured: true
+draft: false
+lang: en
+translationKey: bnpl-credit
+tags:
+  - use-case-03
+  - credit
+  - bnpl
+description: "Lending money looks simple — until the first month-end close. With the right ledger, daily provisioning, interest accruals and write-offs turn into three queries rather than three projects."
+---
+
+<Lede>
+  Credit is the most accounting-dense financial product that exists. Every
+  installment generates interest on an accrual basis, amortization,
+  occasional lateness, provisioning, and — when it comes to it — a write-off.
+  All of it has to reconcile against the funding statement and the
+  regulatory balance sheet. Without a ledger, closing the month inside the
+  month is impossible.
+</Lede>
+
+## The problem
+
+Most BNPL platforms start by computing interest on demand: "when the customer pays, I'll see how much it is." That breaks at two moments. First, at month-end — interest revenue must be recognized on accrual, not cash basis. Second, at provisioning — expected loss has to be estimated and booked every day, not on the day of default.
+
+## Chart of accounts
+
+| Account | Kind | Meaning |
+|---|---|---|
+| `loan:<id>:principal` | Asset | Outstanding principal |
+| `loan:<id>:interest:accrued` | Asset | Accrued interest receivable |
+| `loan:<id>:fees:accrued` | Asset | Fees receivable |
+| `ops:funding:equity` | Liability | Equity funding |
+| `ops:funding:fidc` | Liability | Securitization funding (FIDC) |
+| `ops:revenue:interest` | Revenue | Interest revenue recognized |
+| `ops:loss:provision` | Expense | Loss provisioning |
+| `ops:allowance:loss` | Contra-asset | Loss allowance (offsets principal) |
+
+## Disbursing a loan
+
+A R$ 1,000.00 loan over 10 installments at 3% monthly. On disbursement day, two entries:
+
+<Ledger
+  label="DISBURSEMENT · LOAN L_77 · R$ 1,000.00"
+  rows={[
+    ["loan:l_77:principal", "1000.00", ""],
+    ["ops:pool:pix",        "",        "1000.00"],
+  ]}
+/>
+
+## Daily interest accrual
+
+Every day, a job runs over every active loan and books interest on an accrual basis — even if the customer hasn't paid yet. That is what lets you close the month on day 1: by day 30, revenue has already been recognized day by day.
+
+<Ledger
+  label="DAILY ACCRUAL · LOAN L_77 · DAY 15"
+  rows={[
+    ["loan:l_77:interest:accrued", "1.00", ""],
+    ["ops:revenue:interest",       "",     "1.00"],
+  ]}
+/>
+
+The value is simplified for the example. In production, the calculation uses the contract's exact convention (business-day pro-rata, 360-day base, etc.), but the posting pattern is always the same: debit `interest:accrued`, credit `revenue:interest`. When the customer pays the following month, the receipt debits `pool:pix` and credits `interest:accrued` — no revenue is recognized twice.
+
+## Installment receipt
+
+<Ledger
+  label="PAYMENT · LOAN L_77 · INSTALLMENT 1 · R$ 117.22"
+  rows={[
+    ["ops:pool:pix",               "117.22", ""],
+    ["loan:l_77:principal",        "",       "87.22"],
+    ["loan:l_77:interest:accrued", "",       "30.00"],
+  ]}
+/>
+
+## Daily provisioning
+
+Expected loss (PD × LGD × EAD) is computed per loan and booked every day as expense. If the risk model revises downward, the reversal also goes into the ledger — and the history shows, day by day, what the portfolio's loss expectation was.
+
+<Ledger
+  label="DAILY PROVISION"
+  rows={[
+    ["ops:loss:provision",  "2.30", ""],
+    ["ops:allowance:loss",  "",     "2.30"],
+  ]}
+/>
+
+<Callout label="WHY DAILY">
+  Provisioning only at month-end opens a hole: on day 15 the balance sheet
+  doesn't reflect reality. Daily provisioning keeps net assets correct at
+  all times and enables real-time funding decisions.
+</Callout>
+
+## Write-off
+
+When a loan is deemed lost (typically after 180+ days overdue), two things happen in one transaction: principal is written off against the already-provisioned allowance, and the case enters collections. If part is recovered later, it becomes "recovery" revenue — it does not reverse the write-off.
+
+## Invariants
+
+| Invariant | Why |
+|---|---|
+| Σ active principal = portfolio balance | Balance sheet matches the management report |
+| Σ `interest:accrued` = interest receivable | Accrual is never lost |
+| `allowance:loss` ≤ Σ principal | Provisioning never exceeds the asset |
+| Every payment references `loan_id` + `installment` | Traceability for collections and audit |
+
+<PullQuote attr="CFO view">
+  Every credit fintech that works out eventually turns into an asset
+  manager. The ledger is the fund's thesis.
+</PullQuote>
+
+## FAQ
+
+### How do I handle renegotiations?
+
+A renegotiation is a new transaction that extinguishes current balances and creates a new loan. The original loan's history remains; the new one carries a `renegotiated_from_loan_id`. Audit can rebuild the chain.
+
+### What about securitization (FIDC) / portfolio assignment?
+
+A cession moves principal + accrued interest from `ops:funding:equity` to `ops:funding:fidc`, recognizing the discount on the appropriate expense account. Nothing on the customer's side changes.
+
+### Revenue over time or on payment?
+
+Brazilian rule (and IFRS 9): accrual basis. Interest is revenue on the day it accrues, not on the day it hits cash. The ledger enforces this by construction.
+
+## When you need this
+
+<NumberedList items={[
+  { n: 1, title: "You lend your own money or a fund's", body: "A balance sheet with a credit asset has to be defensible." },
+  { n: 2, title: "You have more than 10,000 active loans", body: "That's exactly where spreadsheets stop scaling." },
+  { n: 3, title: "You need to close the month within two business days", body: "Without daily accrual, impossible." },
+  { n: 4, title: "You'll issue a securitization or sell part of the portfolio", body: "Auditors want entry-level history — or they don't sign." },
+]} />
+
+<CTA eyebrow="DEPLOY IN YOUR AWS" href="https://entrytarget.com/">
+  A ledger that's actually yours.
+</CTA>
