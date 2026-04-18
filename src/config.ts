@@ -1,0 +1,23 @@
+export const SITE = {
+  website: "https://blog.entrytarget.com/",
+  author: "EntryTarget",
+  profile: "https://entrytarget.com/",
+  desc: "Notes on double-entry ledger infrastructure, security, and operations — from the team building EntryTarget.",
+  title: "EntryTarget Blog",
+  ogImage: "entrytarget-og.jpg",
+  lightAndDarkMode: true,
+  postPerIndex: 6,
+  postPerPage: 6,
+  scheduledPostMargin: 15 * 60 * 1000,
+  showArchives: true,
+  showBackButton: true,
+  editPost: {
+    enabled: false,
+    text: "Suggest an edit",
+    url: "https://github.com/entrytarget/blog/edit/main/",
+  },
+  dynamicOgImage: true,
+  dir: "ltr",
+  lang: "en",
+  timezone: "America/Sao_Paulo",
+} as const;
