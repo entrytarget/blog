@@ -1,0 +1,51 @@
+---
+/**
+ * JSONBlock — dark code block with a mono label. Tight whitespace for
+ * payload snippets that don't warrant a full fenced code block.
+ *
+ * Usage:
+ *   <JSONBlock label="POST /api/transaction">
+ *     {`{
+ *   "entries": [
+ *     { "account": "usr_42/cash", "amount": 10000 }
+ *   ]
+ * }`}
+ *   </JSONBlock>
+ */
+interface Props {
+  label?: string;
+}
+const { label = "PAYLOAD" } = Astro.props;
+---
+
+<div class="jsonblock">
+  <div class="label">{label}</div>
+  <pre><code><slot /></code></pre>
+</div>
+
+<style>
+  .jsonblock {
+    margin: 1.5rem 0 2rem;
+  }
+
+  .label {
+    font-family: var(--font-mono), monospace;
+    font-size: 0.6875rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 0.625rem;
+  }
+
+  pre {
+    background: var(--rule);
+    color: var(--background);
+    padding: 1.5rem;
+    overflow-x: auto;
+    font-family: var(--font-mono), monospace;
+    font-size: 0.8125rem;
+    line-height: 1.6;
+    margin: 0;
+    border-radius: 0;
+  }
+</style>

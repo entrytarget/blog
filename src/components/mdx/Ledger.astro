@@ -1,0 +1,127 @@
+---
+/**
+ * Ledger — double-entry transaction table. Columns: Account · Debit · Credit.
+ * Automatically sums each column in the footer so readers can verify the
+ * entry balances. Values are strings so you can pass "—" for an empty side.
+ *
+ * Usage:
+ *   <Ledger
+ *     label="ENTRY 01 · USER TOP-UP"
+ *     rows={[
+ *       ["usr_42/cash",       "10,000", ""],
+ *       ["platform/revenue",  "",       "10,000"],
+ *     ]}
+ *   />
+ */
+interface Props {
+  label?: string;
+  /** Rows as [account, debit, credit]. Empty string collapses to an em dash. */
+  rows: Array<[string, string, string]>;
+}
+
+const { label = "LEDGER ENTRY", rows } = Astro.props;
+
+function parse(value: string): number {
+  const n = Number(value.replace(/[,\s]/g, "").replace(/^—$/u, ""));
+  return Number.isFinite(n) ? n : 0;
+}
+
+const totalDebit = rows.reduce((s, [, d]) => s + parse(d), 0);
+const totalCredit = rows.reduce((s, [, , c]) => s + parse(c), 0);
+
+function fmt(n: number): string {
+  return n === 0 ? "—" : n.toLocaleString("en-US");
+}
+---
+
+<div class="ledger">
+  <div class="label">{label}</div>
+  <table>
+    <thead>
+      <tr>
+        <th>Account</th>
+        <th class="r">Debit</th>
+        <th class="r">Credit</th>
+      </tr>
+    </thead>
+    <tbody>
+      {rows.map(([account, debit, credit]) => (
+        <tr>
+          <td class="acc">{account}</td>
+          <td class="r dr">{debit.trim() ? debit : "—"}</td>
+          <td class="r cr">{credit.trim() ? credit : "—"}</td>
+        </tr>
+      ))}
+    </tbody>
+    <tfoot>
+      <tr>
+        <td>Totals</td>
+        <td class="r">{fmt(totalDebit)}</td>
+        <td class="r">{fmt(totalCredit)}</td>
+      </tr>
+    </tfoot>
+  </table>
+</div>
+
+<style>
+  .ledger {
+    margin: 1.5rem 0 2rem;
+  }
+
+  .label {
+    font-family: var(--font-mono), monospace;
+    font-size: 0.6875rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 0.625rem;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    border: 1px solid var(--rule);
+    font-size: 0.875rem;
+    background: var(--background);
+  }
+
+  th {
+    background: var(--rule);
+    color: var(--background);
+    padding: 0.75rem 1rem;
+    text-align: left;
+    font-family: var(--font-mono), monospace;
+    font-size: 0.625rem;
+    font-weight: 400;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+  }
+
+  th.r {
+    text-align: right;
+  }
+
+  td {
+    padding: 0.875rem 1rem;
+    border-top: 1px solid var(--border);
+    vertical-align: top;
+  }
+
+  td.r {
+    text-align: right;
+    font-family: var(--font-mono), monospace;
+  }
+
+  td.acc {
+    font-family: var(--font-mono), monospace;
+    font-size: 0.8125rem;
+  }
+
+  tfoot td {
+    background: var(--background-deep);
+    border-top: 2px solid var(--rule);
+    font-family: var(--font-mono), monospace;
+    font-size: 0.75rem;
+    font-weight: 500;
+  }
+</style>

@@ -61,15 +61,17 @@ const structuredData = {
     <link rel="canonical" href={canonicalURL} />
     <meta name="generator" content={Astro.generator} />
 
-    <!-- Load Fonts — Outfit (body) + IBM Plex Mono (code & labels). -->
+    <!-- Editorial fonts. Preloads stay minimal — Fraunces 400 for titles
+         and Inter Tight 400 for body cover the visible first paint. -->
     <Font
-      cssVariable="--font-outfit"
+      cssVariable="--font-fraunces"
       preload={[{ subset: "latin", weight: 400, style: "normal" }]}
     />
     <Font
-      cssVariable="--font-plex-mono"
+      cssVariable="--font-inter-tight"
       preload={[{ subset: "latin", weight: 400, style: "normal" }]}
     />
+    <Font cssVariable="--font-mono" />
 
     <!-- General Meta Tags -->
     <title>{title}</title>

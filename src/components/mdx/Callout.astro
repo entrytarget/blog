@@ -1,0 +1,48 @@
+---
+/**
+ * Callout — boxed aside with a mono label and an accent stripe.
+ *
+ * Usage:
+ *   <Callout label="KEY TAKEAWAY">
+ *     The custody boundary is load-bearing.
+ *   </Callout>
+ */
+interface Props {
+  label?: string;
+}
+
+const { label = "NOTE" } = Astro.props;
+---
+
+<aside class="callout">
+  <div class="label">{label}</div>
+  <div class="body"><slot /></div>
+</aside>
+
+<style>
+  .callout {
+    background: var(--background-deep);
+    padding: 1.75rem 2rem;
+    margin: 2rem 0;
+    border-left: 3px solid var(--accent);
+  }
+
+  .label {
+    font-family: var(--font-mono), monospace;
+    font-size: 0.6875rem;
+    font-weight: 500;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 0.625rem;
+  }
+
+  .body {
+    font-size: 1.0625rem;
+    line-height: 1.6;
+  }
+
+  .body :global(p:last-child) {
+    margin-bottom: 0;
+  }
+</style>

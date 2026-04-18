@@ -3,32 +3,44 @@
 
 @custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));
 
-/* Palette mirrors entrytarget.com landing — bege/preto minimalista. */
+/* Editorial palette — lifted from the EntryTarget design studies.
+   Light mode is the canonical one (cream paper + dark ink + lime accent).
+   Dark mode inverts the paper without losing the accent punch. */
 :root,
 html[data-theme="light"] {
-  --background: #f4f1eb;
-  --foreground: #1a1a1a;
-  --accent: #1a1a1a;
-  --muted: #efebe3;
-  --border: #cccccc;
+  --background: #f6f5f1;
+  --background-deep: #ecead3;
+  --foreground: #0a0a0a;
+  --accent: #d4f85a;
+  --accent-ink: #0a0a0a;
+  --muted: #7a7875;
+  --border: rgba(10, 10, 10, 0.12);
+  --rule: #0a0a0a;
 }
 
 html[data-theme="dark"] {
-  --background: #1a1a1a;
-  --foreground: #f4f1eb;
-  --accent: #f4f1eb;
-  --muted: #2a2a2a;
-  --border: #3a3a3a;
+  --background: #0a0a0a;
+  --background-deep: #151515;
+  --foreground: #f6f5f1;
+  --accent: #d4f85a;
+  --accent-ink: #0a0a0a;
+  --muted: #8a8885;
+  --border: rgba(246, 245, 241, 0.14);
+  --rule: #f6f5f1;
 }
 
 @theme inline {
-  --font-app: var(--font-outfit);
-  --font-mono: var(--font-plex-mono);
+  --font-app: var(--font-inter-tight);
+  --font-serif: var(--font-fraunces);
+  --font-mono: var(--font-mono);
   --color-background: var(--background);
+  --color-background-deep: var(--background-deep);
   --color-foreground: var(--foreground);
   --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
   --color-muted: var(--muted);
   --color-border: var(--border);
+  --color-rule: var(--rule);
 }
 
 @layer base {
@@ -41,7 +53,9 @@ html[data-theme="dark"] {
     @apply overflow-y-scroll scroll-smooth;
   }
   body {
-    @apply flex min-h-svh flex-col bg-background font-app text-foreground selection:bg-accent/75 selection:text-background;
+    @apply flex min-h-svh flex-col bg-background font-app text-foreground selection:bg-accent/75 selection:text-accent-ink;
+    font-size: 16px;
+    line-height: 1.55;
   }
   a,
   button {
@@ -50,6 +64,25 @@ html[data-theme="dark"] {
   button:not(:disabled),
   [role="button"]:not(:disabled) {
     cursor: pointer;
+  }
+
+  /* Serif display for title surfaces. */
+  h1,
+  h2,
+  .font-serif {
+    font-family: var(--font-serif), Georgia, serif;
+    font-weight: 400;
+    letter-spacing: -0.02em;
+  }
+
+  /* Mono for labels, kickers, metadata. */
+  .kicker,
+  .mono {
+    font-family: var(--font-mono), ui-monospace, monospace;
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--muted);
   }
 }
 
@@ -61,12 +94,14 @@ html[data-theme="dark"] {
   @apply mx-auto w-full max-w-app px-4;
 }
 
-.active-nav {
-  @apply underline decoration-wavy decoration-2 underline-offset-8;
+@utility max-w-editorial {
+  max-width: 1180px;
 }
 
-/* Source: https://piccalil.li/blog/a-more-modern-css-reset/ */
-/* Anything that has been anchored to should have extra scroll margin */
-:target {
-  scroll-margin-block: 1rem;
+@utility editorial-layout {
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: 1.25rem;
+  padding-right: 1.25rem;
+  max-width: 1180px;
 }

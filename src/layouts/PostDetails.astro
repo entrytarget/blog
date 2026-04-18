@@ -9,6 +9,7 @@ import EditPost from "@/components/EditPost.astro";
 import ShareLinks from "@/components/ShareLinks.astro";
 import BackButton from "@/components/BackButton.astro";
 import BackToTopButton from "@/components/BackToTopButton.astro";
+import * as mdxComponents from "@/components/mdx";
 import { getPath } from "@/utils/getPath";
 import { slugifyStr } from "@/utils/slugify";
 import IconChevronLeft from "@/assets/icons/IconChevronLeft.svg";
@@ -83,53 +84,57 @@ const nextPost =
 ---
 
 <Layout {...layoutProps}>
-  <Header />
+  <Header lang={post.data.lang ?? "en"} />
   <BackButton />
-  <main
-    id="main-content"
-    class:list={["app-layout pb-12", { "mt-8": !SITE.showBackButton }]}
-    data-pagefind-body
-  >
-    <h1
-      transition:name={slugifyStr(title.replaceAll(".", "-"))}
-      class="inline-block text-2xl font-bold text-accent sm:text-3xl"
-    >
-      {title}
-    </h1>
-    <div class="my-2 flex items-center gap-2">
-      <Datetime {pubDatetime} {modDatetime} {timezone} size="lg" />
-      <span
-        aria-hidden="true"
-        class:list={[
-          "max-sm:hidden",
-          { hidden: !SITE.editPost.enabled || hideEditPost },
-        ]}>|</span
+  <main id="main-content" class="pb-12" data-pagefind-body>
+    <header class="editorial-layout post-hero">
+      <span class="kicker">
+        {post.data.tags?.[0] ? post.data.tags[0].toUpperCase() : "DISPATCH"} · {post.data.lang === "pt" ? "PT" : "EN"}
+      </span>
+      <h1
+        transition:name={slugifyStr(title.replaceAll(".", "-"))}
+        class="post-title"
       >
-      <EditPost {hideEditPost} {post} class="max-sm:hidden" />
-    </div>
-    <article
-      id="article"
-      class="app-prose mt-8 w-full max-w-app prose-pre:bg-(--shiki-light-bg) dark:prose-pre:bg-(--shiki-dark-bg)"
-    >
-      <Content />
+        {title}
+      </h1>
+      <p class="post-dek">{description}</p>
+      <div class="post-meta mono">
+        <Datetime {pubDatetime} {modDatetime} {timezone} size="lg" />
+        {
+          SITE.editPost.enabled && !hideEditPost && (
+            <>
+              <span aria-hidden="true">·</span>
+              <EditPost {hideEditPost} {post} class="max-sm:hidden" />
+            </>
+          )
+        }
+      </div>
+    </header>
+
+    <article id="article" class="editorial-layout post-body">
+      {/* mdxComponents are exposed as unqualified JSX tags inside MDX:
+          posts can write <Callout>...</Callout> without any import. */}
+      <Content components={mdxComponents} />
     </article>
 
-    <hr class="my-8 border-dashed" />
+    <div class="editorial-layout">
+      <hr class="my-8 border-dashed border-border" />
 
-    <EditPost class="sm:hidden" {hideEditPost} {post} />
+      <EditPost class="sm:hidden" {hideEditPost} {post} />
 
-    <ul class="mt-4 mb-8 flex flex-wrap gap-4 sm:my-8">
-      {tags.map(tag => <Tag tag={slugifyStr(tag)} tagName={tag} size="sm" />)}
-    </ul>
+      <ul class="mt-4 mb-8 flex flex-wrap gap-4 sm:my-8 list-none p-0">
+        {tags.map(tag => <Tag tag={slugifyStr(tag)} tagName={tag} size="sm" />)}
+      </ul>
 
-    <BackToTopButton />
+      <BackToTopButton />
 
-    <ShareLinks />
+      <ShareLinks />
 
-    <hr class="my-6 border-dashed" />
+      <hr class="my-6 border-dashed border-border" />
+    </div>
 
     <!-- Previous/Next Post Buttons -->
-    <div data-pagefind-ignore class="grid grid-cols-1 gap-6 sm:grid-cols-2">
+    <div data-pagefind-ignore class="editorial-layout grid grid-cols-1 gap-6 sm:grid-cols-2">
       {
         prevPost && (
           <a
@@ -283,3 +288,119 @@ const nextPost =
     window.scrollTo({ left: 0, top: 0, behavior: "instant" })
   );
 </script>
+
+<style>
+  .post-hero {
+    padding: 4.5rem 1.25rem 3rem;
+    border-bottom: 1px solid var(--border);
+    max-width: 900px;
+  }
+
+  .post-hero .kicker {
+    display: inline-block;
+    margin-bottom: 1.75rem;
+  }
+
+  .post-title {
+    font-family: var(--font-serif), Georgia, serif;
+    font-weight: 400;
+    font-size: clamp(2.25rem, 4.5vw, 4rem);
+    line-height: 1.02;
+    letter-spacing: -0.03em;
+    margin: 0;
+    color: var(--foreground);
+  }
+
+  .post-dek {
+    font-size: 1.375rem;
+    line-height: 1.5;
+    color: var(--muted);
+    max-width: 680px;
+    margin-top: 1.75rem;
+  }
+
+  .post-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    margin-top: 2.25rem;
+    align-items: center;
+  }
+
+  .post-body {
+    max-width: 720px;
+    padding: 4rem 1.25rem 6rem;
+  }
+
+  .post-body :global(p) {
+    font-size: 1.125rem;
+    line-height: 1.7;
+    margin: 0 0 1.5rem;
+  }
+
+  .post-body :global(h2) {
+    font-family: var(--font-serif), Georgia, serif;
+    font-weight: 400;
+    font-size: 2.25rem;
+    line-height: 1.1;
+    letter-spacing: -0.025em;
+    margin: 4rem 0 1.25rem;
+  }
+
+  .post-body :global(h3) {
+    font-family: var(--font-app), sans-serif;
+    font-weight: 500;
+    font-size: 1.375rem;
+    letter-spacing: -0.015em;
+    margin: 2.5rem 0 1rem;
+  }
+
+  .post-body :global(ul),
+  .post-body :global(ol) {
+    margin: 1rem 0 1.5rem;
+    padding-left: 1.5rem;
+  }
+
+  .post-body :global(li) {
+    font-size: 1.0625rem;
+    line-height: 1.6;
+    margin: 0 0 0.5rem;
+  }
+
+  .post-body :global(a) {
+    color: var(--foreground);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    text-decoration-thickness: 1px;
+    text-decoration-style: dashed;
+  }
+
+  .post-body :global(a:hover) {
+    text-decoration-style: solid;
+  }
+
+  .post-body :global(code) {
+    font-family: var(--font-mono), monospace;
+    font-size: 0.9em;
+    background: var(--background-deep);
+    padding: 0.1em 0.35em;
+    border-radius: 2px;
+  }
+
+  .post-body :global(pre) {
+    background: var(--rule);
+    color: var(--background);
+    padding: 1.5rem;
+    overflow-x: auto;
+    font-family: var(--font-mono), monospace;
+    font-size: 0.875rem;
+    line-height: 1.6;
+    margin: 1.5rem 0;
+  }
+
+  .post-body :global(pre code) {
+    background: transparent;
+    padding: 0;
+    color: inherit;
+  }
+</style>

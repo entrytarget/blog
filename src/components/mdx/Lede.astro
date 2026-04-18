@@ -1,0 +1,24 @@
+---
+/**
+ * Lede — the first paragraph of a post. Larger, serif, slightly looser.
+ *
+ * Usage:
+ *   <Lede>Every ledger API makes you choose where the transactions live.</Lede>
+ */
+---
+
+<p class="lede">
+  <slot />
+</p>
+
+<style>
+  .lede {
+    font-family: var(--font-serif), Georgia, serif;
+    font-weight: 400;
+    font-size: 1.55rem;
+    line-height: 1.4;
+    letter-spacing: -0.01em;
+    color: var(--foreground);
+    margin: 0 0 3rem;
+  }
+</style>

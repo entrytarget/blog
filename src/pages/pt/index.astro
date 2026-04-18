@@ -10,26 +10,29 @@ import IconRss from "@/assets/icons/IconRss.svg";
 import { SITE } from "@/config";
 
 const allPosts = await getCollection("blog");
-const posts = getPostsByLang(allPosts, "en");
+const posts = getPostsByLang(allPosts, "pt");
 const sortedPosts = getSortedPosts(posts);
 ---
 
-<Layout>
-  <Header lang="en" />
+<Layout
+  title={`Blog | ${SITE.title}`}
+  description="Notas de engenharia, segurança e operação do time por trás da EntryTarget."
+>
+  <Header lang="pt" />
   <main id="main-content" data-layout="index" class="editorial-layout">
     <section class="idx-hero">
-      <span class="kicker">EntryTarget · Journal</span>
+      <span class="kicker">EntryTarget · Diário</span>
       <h1 class="idx-h1">
-        Notes on double-entry<br />ledger infrastructure.
+        Notas sobre infra<br />de ledger double-entry.
       </h1>
       <p class="idx-dek">
-        Engineering, security and operations writing from the team building
-        EntryTarget. Posts go out when we have something real to say, not on
-        a schedule.
+        Engenharia, segurança e operação — escritos do time que constrói a
+        EntryTarget. Posts saem quando temos algo real pra dizer, não em
+        cadência fixa.
       </p>
       <div class="idx-hero-links">
         <a class="idx-link" href="/rss.xml">
-          <IconRss class="idx-rss-icon" /> RSS feed
+          <IconRss class="idx-rss-icon" /> Feed RSS
         </a>
         <a class="idx-link" href="https://entrytarget.com/">entrytarget.com ↗</a>
       </div>
@@ -53,7 +56,7 @@ const sortedPosts = getSortedPosts(posts);
     const indexLayout = (document.querySelector("#main-content") as HTMLElement)
       ?.dataset?.layout;
     if (indexLayout) {
-      sessionStorage.setItem("backUrl", "/");
+      sessionStorage.setItem("backUrl", "/pt/");
     }
   });
 </script>
@@ -63,12 +66,10 @@ const sortedPosts = getSortedPosts(posts);
     padding: 4rem 0 3rem;
     border-bottom: 1px solid var(--border);
   }
-
   .idx-hero .kicker {
     display: inline-block;
     margin-bottom: 1.25rem;
   }
-
   .idx-h1 {
     font-family: var(--font-serif), Georgia, serif;
     font-weight: 400;
@@ -78,7 +79,6 @@ const sortedPosts = getSortedPosts(posts);
     margin: 0;
     max-width: 900px;
   }
-
   .idx-dek {
     font-size: 1.25rem;
     line-height: 1.5;
@@ -86,13 +86,11 @@ const sortedPosts = getSortedPosts(posts);
     max-width: 680px;
     margin-top: 2rem;
   }
-
   .idx-hero-links {
     display: flex;
     gap: 1.25rem;
     margin-top: 2rem;
   }
-
   .idx-link {
     font-family: var(--font-mono), monospace;
     font-size: 0.6875rem;
@@ -104,18 +102,15 @@ const sortedPosts = getSortedPosts(posts);
     align-items: center;
     gap: 0.4rem;
   }
-
   .idx-link:hover {
     color: var(--muted);
   }
-
   :global(.idx-rss-icon) {
     width: 0.85rem;
     height: 0.85rem;
     stroke: currentColor;
     stroke-width: 2.5;
   }
-
   .idx-grid {
     display: grid;
     grid-template-columns: 1fr;
@@ -124,11 +119,9 @@ const sortedPosts = getSortedPosts(posts);
     list-style: none;
     padding: 0;
   }
-
   .idx-grid :global(.ed-card) {
     border-bottom: 1px solid var(--rule);
   }
-
   @media (min-width: 720px) {
     .idx-grid {
       grid-template-columns: 1fr 1fr;

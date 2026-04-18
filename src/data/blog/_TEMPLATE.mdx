@@ -1,0 +1,107 @@
+---
+# Underscore-prefixed filenames are ignored by the content collection glob —
+# this file is a reference only, never shipped as a post. Copy it into
+# blog/en/<slug>.mdx or blog/pt/<slug>.mdx and strip the sections you don't need.
+
+author: EntryTarget
+pubDatetime: 2026-04-18T12:00:00-03:00
+title: "Post title here"
+featured: false
+draft: true
+
+# Language is inferred from the folder (en/ or pt/), but you can set it
+# explicitly if the file lives at the root.
+lang: en
+
+# translationKey links two files as translations of each other. Pick a stable
+# id and use the same value on the EN and PT versions — the toggle in the
+# header can then jump between them.
+translationKey: my-post-key
+
+tags:
+  - architecture
+  - security
+
+description: One-sentence summary used for SEO, RSS and the post cards.
+---
+
+{/*
+  Every component below is available as an unqualified JSX tag inside any
+  .mdx post — no imports needed, the PostDetails layout injects them via
+  <Content components={...} />.
+*/}
+
+<Lede>
+  Big opener paragraph that sets up the argument. One or two sentences
+  is plenty. Set in Fraunces serif so it reads like a magazine lede.
+</Lede>
+
+Plain markdown body starts here. Everything you'd expect — **bold**,
+*italics*, [links](https://entrytarget.com), fenced code:
+
+```rust
+fn main() {
+    println!("Hello, ledger.");
+}
+```
+
+## A section heading
+
+Serif H2s break the article into scannable chunks. Keep them short.
+
+### A sub-section
+
+Subsections use the sans-serif (Inter Tight).
+
+<Callout label="KEY TAKEAWAY">
+  Callouts pull a single idea out of the flow. Reserve them for the one
+  thing you'd want a skimmer to walk away with.
+</Callout>
+
+Regular paragraph again. You can mix markdown and components freely.
+
+<PullQuote attr="Operations lead, Brazilian fintech · 2026">
+  The moment we stopped thinking of the ledger as a feature and started
+  treating it as a system of record, everything downstream got easier.
+</PullQuote>
+
+## Showing a transaction
+
+Double-entry ledger readers expect balanced tables. `Ledger` formats them
+correctly and validates totals at render time.
+
+<Ledger
+  label="ENTRY 01 · USER TOP-UP (10,000 USD)"
+  rows={[
+    ["usr_42/cash",      "10,000", ""],
+    ["platform/revenue", "",       "10,000"],
+  ]}
+/>
+
+## Showing a payload
+
+<JSONBlock label="POST /api/transaction">
+{`{
+  "entries": [
+    { "account": "usr_42/cash",      "amount":  10000, "asset": "USD" },
+    { "account": "platform/revenue", "amount": -10000, "asset": "USD" }
+  ]
+}`}
+</JSONBlock>
+
+## An ordered list of points
+
+<NumberedList items={[
+  { n: 1, title: "Title of the point",     body: "One-sentence elaboration." },
+  { n: 2, title: "Second point",           body: "More detail here." },
+  { n: 3, title: "Third point (optional)", body: "" },
+]} />
+
+## Closing
+
+End with a clean CTA pointing back to the product. Keep the copy tight —
+one line headline, one line subtitle-ish, go.
+
+<CTA eyebrow="DEPLOY IN YOUR AWS" href="https://entrytarget.com/">
+  A ledger that's actually yours.
+</CTA>

@@ -1,0 +1,77 @@
+---
+author: EntryTarget
+pubDatetime: 2026-04-18T02:05:00-03:00
+title: "Por que o ledger roda na sua conta AWS, e não na nossa"
+featured: true
+draft: false
+lang: pt
+translationKey: ledger-in-your-aws
+tags:
+  - arquitetura
+  - seguranca
+  - aws
+description: "Ledgers multi-tenant são confortáveis pro fornecedor e um pesadelo de compliance pro cliente. A gente foi pelo caminho oposto — e isso mudou quase toda decisão de design lá na frente."
+---
+
+<Lede>
+  A maior parte dos "ledger as a service" coloca o ledger na infraestrutura
+  *deles*. Suas transações andam num Postgres multi-tenant em algum lugar da
+  VPC do fornecedor, acessível pela API deles. É o caminho de menor resistência
+  pro fornecedor — e o caminho que empurra toda pergunta difícil pra equipe
+  de compliance do cliente.
+</Lede>
+
+Concretamente, o que o lead de compliance do cliente tem que perguntar:
+
+- *Onde os dados transacionais ficam fisicamente?*
+- *Quem no fornecedor tem acesso de leitura ao banco?*
+- *Se o fornecedor sofrer um breach, temos que notificar nossos clientes por LGPD/GDPR?*
+- *Como fica nosso DPA — e eles vão assinar o nosso?*
+- *Se o fornecedor sumir, como recuperamos os dados?*
+
+A gente escolheu o modelo oposto. A EntryTarget faz deploy de um **runtime dedicado em Rust** — Fargate + RDS Postgres — dentro da conta AWS que o cliente já tem. O cliente escolhe a região. O cliente tem as credenciais IAM raiz. A gente nunca vê uma transação.
+
+## O que de fato roda na sua conta
+
+Quando você clica em "Deploy" no console, um infra-worker que a gente opera usa o seu IAM role (escopado) pra subir:
+
+- Uma VPC (`natGateways: 1, maxAzs: 2`) — 1 NAT Gateway + um Application Load Balancer na frente do serviço.
+- Um serviço Fargate rodando o binário do ledger, com a imagem em container empurrada pro **seu** ECR.
+- Uma instância RDS Postgres (você escolhe a classe — `db.t4g.medium` no Starter, `db.r6g.large` no Business e Enterprise) com uma read replica.
+- Duas entradas no Secrets Manager — credenciais do RDS e config do app.
+- Log groups no CloudWatch.
+- Um security group conectando ECS ↔ RDS, sem egress público.
+
+<Callout label="O QUE A GENTE VÊ · O QUE NÃO VÊ">
+A gente vê o **heartbeat** (seu deployment está vivo, versão do binário, kid da licença atual). A gente nunca vê o **journal** (transações, saldos, nomes de conta, valores).
+</Callout>
+
+Quando a gente atualiza o manifesto, não encostamos nos seus dados — o worker só rola um novo task definition apontando pro mesmo RDS. Seus logs vão pro seu CloudWatch. Seus custos aparecem na sua fatura AWS, não na nossa.
+
+## A linha clara
+
+A fronteira operacional é simples:
+
+- **Seu lado:** dados transacionais, credenciais AWS, PII do usuário, IAM, escolha de região, política de backup, retenção.
+- **Nosso lado:** o binário (JWT de licença Ed25519 assinado, hash de integridade HMAC SHA-256 por linha), o workflow de deploy, assinatura de release, o heartbeat que conta pra gente que o deployment está vivo.
+
+<PullQuote attr="Nota de design EntryTarget, 2026">
+  Se o fornecedor consegue responder "você consegue ler meu ledger?" com
+  qualquer coisa além de "fisicamente, não", o design já perdeu.
+</PullQuote>
+
+## O que a gente trocou
+
+Rodar na conta AWS do cliente não sai de graça. Custou alguns constraints de design que a gente evitaria se pudesse:
+
+- **Build por cliente virou licença por cliente.** Saímos de "compila um binário único por conta" pra "publica um binário universal + assina um JWT curto por ambiente". Menos peças móveis, zero segredo vazando por etapa de compilação.
+- **A conta do custo é problema do cliente.** A gente cobra flat $250/mês; a AWS cobra o que Fargate + RDS + NAT + ALB somarem na região do cliente. A gente publica um estimador no console pra não ter surpresa, mas a linha está lá — no bill dele.
+- **A gente não consegue "dar um patchzinho" por SSH.** Todo fix sai como imagem assinada e roda pelo ECS deployment do cliente. Mais lento, mas também: a gente fisicamente não consegue tocar no dado dele.
+
+## Por que esse blog existe
+
+Boa parte desse tipo de trade-off não cabe numa doc ou num deck de venda. A gente vai escrevendo aqui — decisões de arquitetura, as coisas que reconsideramos, e a razão atrás das escolhas que acabaram virando load-bearing.
+
+<CTA eyebrow="DEPLOY NO SEU AWS" href="https://entrytarget.com/" cta="entrytarget.com →">
+  Um ledger que é realmente seu.
+</CTA>

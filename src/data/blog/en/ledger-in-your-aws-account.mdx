@@ -1,9 +1,11 @@
 ---
 author: EntryTarget
 pubDatetime: 2026-04-18T02:05:00-03:00
-title: Why the ledger runs in your AWS account, not ours
+title: "Why the ledger runs in your AWS account, not ours"
 featured: true
 draft: false
+lang: en
+translationKey: ledger-in-your-aws
 tags:
   - architecture
   - security
@@ -11,9 +13,15 @@ tags:
 description: Shared-tenancy ledgers make operational sense for the vendor and compliance nightmares for the customer. We went the other way — and it changed almost every design decision downstream.
 ---
 
-Most "ledger as a service" offerings put the ledger in **their** infrastructure. Your transactions ride a multi-tenant Postgres instance somewhere in their VPC, accessible via their API. It's the path of least resistance for the vendor: one stack to operate, one database to scale, one pager rotation.
+<Lede>
+  Most "ledger as a service" offerings put the ledger in *their* infrastructure.
+  Your transactions ride a multi-tenant Postgres instance somewhere in their
+  VPC, accessible via their API. It's the path of least resistance for the
+  vendor. It's also the path that pushes every hard question back onto the
+  customer's compliance team.
+</Lede>
 
-It's also the path that pushes every hard question back onto the customer's compliance team.
+Concretely, what the customer's compliance lead actually has to ask:
 
 - *Where does our transactional data physically live?*
 - *Who at the vendor has read access to the underlying database?*
@@ -34,7 +42,11 @@ When you click "Deploy" in the console, an infra-worker we operate uses your sco
 - CloudWatch log groups.
 - A security group wiring ECS ↔ RDS, no public egress.
 
-That's everything. When we update our manifests, we don't touch your data — the worker just rolls a new task definition against the same RDS instance. Your logs go to your CloudWatch. Your costs appear on your AWS bill, not ours.
+<Callout label="WHAT WE SEE · WHAT WE DON'T">
+We see the **heartbeat** (your deployment is alive, current binary version, current license kid). We never see the **journal** (transactions, balances, account names, amounts).
+</Callout>
+
+When we update our manifests, we don't touch your data — the worker just rolls a new task definition against the same RDS instance. Your logs go to your CloudWatch. Your costs appear on your AWS bill, not ours.
 
 ## The clear line
 
@@ -43,13 +55,16 @@ The operational boundary is simple:
 - **Your side:** transactional data, AWS credentials, customer PII, IAM, region choice, backup policy, retention.
 - **Our side:** the binary (signed Ed25519 license JWT, HMAC SHA-256 per-row integrity hashes), the deploy workflow, release signing, the heartbeat that tells us your deployment is alive.
 
-We see the heartbeat. We don't see the journal.
+<PullQuote attr="EntryTarget design note, 2026">
+  If the vendor can answer the question "can you read my ledger?" with anything
+  other than "physically, no", the design already lost.
+</PullQuote>
 
 ## What we traded
 
 Running in the customer's AWS account isn't free. It cost us a handful of design constraints we'd happily skip if we could:
 
-- **Per-customer builds turned into a per-customer license JWT** — we moved from "compile a unique binary per account" to "ship one universal binary + sign a short-lived JWT per environment." Fewer moving parts, no secrets leaked through a compile step.
+- **Per-customer builds turned into a per-customer license JWT.** We moved from "compile a unique binary per account" to "ship one universal binary + sign a short-lived JWT per environment." Fewer moving parts, no secrets leaked through a compile step.
 - **Cost math is the customer's problem.** We charge a flat $250/mo; AWS charges whatever Fargate + RDS + NAT + ALB adds up to in the customer's region. We publish an estimator in the console so there's no surprise, but the line item is theirs.
 - **We can't "oops-patch" a bug by SSH-ing in.** Every fix ships as a signed image and rolls through the customer's ECS deployment. Slower, but also: we physically can't touch their data.
 
@@ -57,4 +72,6 @@ Running in the customer's AWS account isn't free. It cost us a handful of design
 
 A lot of the trade-offs above are the kind of thing that doesn't fit in a docs page or a sales deck. We'll write them down here — architecture decisions, the things we reconsidered, and the reasoning behind the choices that ended up being load-bearing.
 
-If the model appeals to you, [join the waitlist](https://entrytarget.com/). Product is still invite-only while we finish onboarding early customers.
+<CTA eyebrow="DEPLOY IN YOUR AWS" href="https://entrytarget.com/">
+  A ledger that's actually yours.
+</CTA>

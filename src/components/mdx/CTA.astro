@@ -1,0 +1,72 @@
+---
+/**
+ * CTA — dark footer-style call-to-action used at the end of a post.
+ *
+ * Usage:
+ *   <CTA eyebrow="DEPLOY IN YOUR AWS" href="https://entrytarget.com">
+ *     A ledger that's actually yours.
+ *   </CTA>
+ */
+interface Props {
+  eyebrow?: string;
+  href: string;
+  cta?: string;
+}
+
+const { eyebrow = "ENTRYTARGET", href, cta = "entrytarget.com →" } = Astro.props;
+---
+
+<section class="cta">
+  <div class="eye">{eyebrow}</div>
+  <h2><slot /></h2>
+  <a class="btn" href={href}>{cta}</a>
+</section>
+
+<style>
+  .cta {
+    margin: 5rem 0 2.5rem;
+    padding: 3.5rem 3rem;
+    background: var(--rule);
+    color: var(--background);
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+    align-items: flex-start;
+  }
+
+  .eye {
+    font-family: var(--font-mono), monospace;
+    font-size: 0.6875rem;
+    letter-spacing: 0.14em;
+    color: var(--accent);
+    text-transform: uppercase;
+  }
+
+  h2 {
+    font-family: var(--font-serif), Georgia, serif;
+    font-weight: 400;
+    font-size: 3rem;
+    line-height: 1;
+    letter-spacing: -0.03em;
+    margin: 0;
+    color: var(--background);
+  }
+
+  .btn {
+    padding: 0.875rem 1.5rem;
+    background: var(--accent);
+    color: var(--accent-ink);
+    font-family: var(--font-mono), monospace;
+    font-size: 0.8125rem;
+    letter-spacing: 0.04em;
+    font-weight: 500;
+    text-decoration: none;
+    display: inline-flex;
+    gap: 0.625rem;
+    align-items: center;
+  }
+
+  .btn:hover {
+    filter: brightness(0.95);
+  }
+</style>

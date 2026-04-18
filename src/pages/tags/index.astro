@@ -6,9 +6,13 @@ import Tag from "@/components/Tag.astro";
 import Header from "@/components/Header.astro";
 import Footer from "@/components/Footer.astro";
 import getUniqueTags from "@/utils/getUniqueTags";
+import getPostsByLang from "@/utils/getPostsByLang";
 import { SITE } from "@/config";
 
-const posts = await getCollection("blog");
+// Tag index lists EN tags; Portuguese tags can diverge, so they belong in a
+// separate /pt/tags mirror if/when we need one.
+const allPosts = await getCollection("blog");
+const posts = getPostsByLang(allPosts, "en");
 
 let tags = getUniqueTags(posts);
 ---

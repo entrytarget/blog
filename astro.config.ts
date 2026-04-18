@@ -1,6 +1,7 @@
 import { defineConfig, envField, fontProviders } from "astro/config";
 import tailwindcss from "@tailwindcss/vite";
 import sitemap from "@astrojs/sitemap";
+import mdx from "@astrojs/mdx";
 import remarkToc from "remark-toc";
 import remarkCollapse from "remark-collapse";
 import {
@@ -15,6 +16,7 @@ import { SITE } from "./src/config";
 export default defineConfig({
   site: SITE.website,
   integrations: [
+    mdx(),
     sitemap({
       filter: page => SITE.showArchives || !page.endsWith("/archives"),
     }),
@@ -59,23 +61,31 @@ export default defineConfig({
   },
   experimental: {
     preserveScriptOrder: true,
-    // Pair mirrors the entrytarget.com landing — Outfit for body/headings,
-    // IBM Plex Mono for code + small-caps labels.
+    // Editorial palette — Fraunces (serif display) for titles/lede/quotes,
+    // Inter Tight for body, JetBrains Mono for kickers/meta/code.
     fonts: [
       {
-        name: "Outfit",
-        cssVariable: "--font-outfit",
+        name: "Fraunces",
+        cssVariable: "--font-fraunces",
         provider: fontProviders.google(),
-        fallbacks: ["system-ui", "sans-serif"],
-        weights: [300, 400, 500, 600, 700, 800],
+        fallbacks: ["Georgia", "serif"],
+        weights: [300, 400, 500, 600],
         styles: ["normal"],
       },
       {
-        name: "IBM Plex Mono",
-        cssVariable: "--font-plex-mono",
+        name: "Inter Tight",
+        cssVariable: "--font-inter-tight",
+        provider: fontProviders.google(),
+        fallbacks: ["system-ui", "sans-serif"],
+        weights: [400, 500, 600, 700],
+        styles: ["normal"],
+      },
+      {
+        name: "JetBrains Mono",
+        cssVariable: "--font-mono",
         provider: fontProviders.google(),
         fallbacks: ["ui-monospace", "monospace"],
-        weights: [400, 500, 600, 700],
+        weights: [400, 500],
         styles: ["normal"],
       },
     ],

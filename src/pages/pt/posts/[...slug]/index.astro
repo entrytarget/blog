@@ -9,13 +9,12 @@ type Props = {
   post: CollectionEntry<"blog">;
 };
 
-// Default-language (EN) post routes live under /posts/*. PT posts are emitted
-// by the mirror page in /pt/posts/[...slug] — filtering here stops the router
-// from producing overlapping routes.
+// PT mirror of /posts/[...slug]. Generates one route per Portuguese post
+// under /pt/posts/<slug>; the EN sibling lives in /src/pages/posts.
 export async function getStaticPaths() {
   const all = await getCollection("blog", ({ data }) => !data.draft);
-  const enPosts = getPostsByLang(all, "en");
-  return enPosts.map(post => ({
+  const ptPosts = getPostsByLang(all, "pt");
+  return ptPosts.map(post => ({
     params: { slug: getPath(post.id, post.filePath, false) },
     props: { post },
   }));
@@ -24,8 +23,8 @@ export async function getStaticPaths() {
 const { post } = Astro.props;
 
 const allPosts = await getCollection("blog");
-const enPosts = getPostsByLang(allPosts, "en");
-const sortedPosts = getSortedPosts(enPosts);
+const ptPosts = getPostsByLang(allPosts, "pt");
+const sortedPosts = getSortedPosts(ptPosts);
 ---
 
 <PostDetails post={post} posts={sortedPosts} />

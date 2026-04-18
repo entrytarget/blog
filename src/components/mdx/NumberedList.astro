@@ -1,0 +1,74 @@
+---
+/**
+ * NumberedList — serif-numbered vertical list. Each item is { n, title, body }.
+ *
+ * Usage:
+ *   <NumberedList items={[
+ *     { n: 1, title: "Per-user subledgers", body: "..." },
+ *     { n: 2, title: "Float accrual",       body: "..." },
+ *   ]} />
+ */
+interface Item {
+  n: number | string;
+  title: string;
+  body?: string;
+}
+
+interface Props {
+  items: Item[];
+}
+
+const { items } = Astro.props;
+---
+
+<ol class="nlist">
+  {items.map(({ n, title, body }) => (
+    <li>
+      <span class="n">{n}</span>
+      <div>
+        <div class="t">{title}</div>
+        {body && <div class="d">{body}</div>}
+      </div>
+    </li>
+  ))}
+</ol>
+
+<style>
+  .nlist {
+    list-style: none;
+    margin: 1.5rem 0 2rem;
+    padding: 0;
+  }
+
+  .nlist li {
+    display: grid;
+    grid-template-columns: 72px 1fr;
+    gap: 1.25rem;
+    padding: 1.5rem 0;
+    border-top: 1px solid var(--border);
+  }
+
+  .nlist li:last-child {
+    border-bottom: 1px solid var(--border);
+  }
+
+  .n {
+    font-family: var(--font-serif), Georgia, serif;
+    font-size: 2.25rem;
+    line-height: 1;
+    color: var(--foreground);
+  }
+
+  .t {
+    font-size: 1.25rem;
+    font-weight: 500;
+    letter-spacing: -0.015em;
+    margin-bottom: 0.25rem;
+  }
+
+  .d {
+    font-size: 0.9375rem;
+    color: var(--muted);
+    line-height: 1.5;
+  }
+</style>

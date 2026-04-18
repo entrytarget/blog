@@ -7,12 +7,52 @@ import IconSunHigh from "@/assets/icons/IconSunHigh.svg";
 import IconMenuDeep from "@/assets/icons/IconMenuDeep.svg";
 import LinkButton from "./LinkButton.astro";
 import { SITE } from "@/config";
+import type { Lang } from "@/utils/getPath";
+
+interface Props {
+  /** Override the auto-detected language. Callers that already know
+   *  (e.g. the PT index) pass "pt" to make labels localised even when the
+   *  URL detection would otherwise be ambiguous. */
+  lang?: Lang;
+  activeNav?: string;
+}
+
+const { lang: langOverride, activeNav: _activeNav } = Astro.props;
 
 const { pathname } = Astro.url;
 
 // Remove trailing slash from current pathname if exists
 const currentPath =
   pathname.endsWith("/") && pathname !== "/" ? pathname.slice(0, -1) : pathname;
+
+// Detect the active language from the URL (PT routes are all /pt/*).
+const lang: Lang =
+  langOverride ?? (currentPath === "/pt" || currentPath.startsWith("/pt/") ? "pt" : "en");
+
+// Toggle target: PT posts mirror EN posts at the same slug, so we can jump
+// cleanly between /posts/foo ↔ /pt/posts/foo. For paths that don't have a
+// guaranteed counterpart (e.g. /tags, /archives) we fall back to the other
+// language's home page.
+function toggleTarget(path: string, current: Lang): string {
+  const stripped = current === "pt" ? path.replace(/^\/pt/, "") || "/" : path;
+  const hasPtMirror = stripped === "/" || stripped.startsWith("/posts");
+  if (current === "pt") return stripped; // leaving PT → EN sibling
+  if (hasPtMirror) return `/pt${stripped === "/" ? "" : stripped}` || "/pt/";
+  return "/pt/";
+}
+const switchHref = toggleTarget(currentPath, lang);
+
+// Localised nav labels. Only keys that differ between EN and PT are listed.
+const t = {
+  posts: lang === "pt" ? "Posts" : "Posts",
+  tags: lang === "pt" ? "Tags" : "Tags",
+  about: lang === "pt" ? "Sobre" : "About",
+  archives: lang === "pt" ? "Arquivo" : "Archives",
+  search: lang === "pt" ? "Buscar" : "Search",
+} as const;
+
+const homeHref = lang === "pt" ? "/pt/" : "/";
+const postsHref = lang === "pt" ? "/pt/posts" : "/posts";
 
 const isActive = (path: string) => {
   const currentPathArray = currentPath.split("/").filter(p => p.trim());
@@ -43,7 +83,7 @@ const isActive = (path: string) => {
     ]}
   >
     <a
-      href="/"
+      href={homeHref}
       class="absolute py-1 text-xl leading-8 font-semibold whitespace-nowrap sm:static sm:my-auto sm:text-2xl sm:leading-none"
     >
       {SITE.title}
@@ -72,18 +112,18 @@ const isActive = (path: string) => {
         ]}
       >
         <li class="col-span-2">
-          <a href="/posts" class:list={{ "active-nav": isActive("/posts") }}>
-            Posts
+          <a href={postsHref} class:list={{ "active-nav": isActive(postsHref) }}>
+            {t.posts}
           </a>
         </li>
         <li class="col-span-2">
           <a href="/tags" class:list={{ "active-nav": isActive("/tags") }}>
-            Tags
+            {t.tags}
           </a>
         </li>
         <li class="col-span-2">
           <a href="/about" class:list={{ "active-nav": isActive("/about") }}>
-            About
+            {t.about}
           </a>
         </li>
         {
@@ -113,12 +153,34 @@ const isActive = (path: string) => {
               "focus-outline flex p-3 sm:p-1",
               { "[&>svg]:stroke-accent": isActive("/search") },
             ]}
-            title="Search"
-            aria-label="search"
+            title={t.search}
+            aria-label={t.search.toLowerCase()}
           >
             <IconSearch />
-            <span class="sr-only">Search</span>
+            <span class="sr-only">{t.search}</span>
           </LinkButton>
+        </li>
+        <li class="col-span-2 flex items-center justify-center sm:col-span-1">
+          {/* Language toggle — takes the reader to the mirror version of the
+              current page when one exists, or home of the other language
+              when it doesn't. */}
+          <a
+            href={switchHref}
+            class="mono inline-flex gap-0 border border-border text-[10px]"
+            aria-label={lang === "pt" ? "Switch to English" : "Mudar para português"}
+            title={lang === "pt" ? "EN" : "PT"}
+          >
+            <span
+              class:list={[
+                "px-2 py-1",
+                lang === "en" ? "bg-foreground text-background" : "text-muted",
+              ]}>EN</span>
+            <span
+              class:list={[
+                "px-2 py-1",
+                lang === "pt" ? "bg-foreground text-background" : "text-muted",
+              ]}>PT</span>
+          </a>
         </li>
         {
           SITE.lightAndDarkMode && (

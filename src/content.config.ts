@@ -5,7 +5,7 @@ import { SITE } from "@/config";
 export const BLOG_PATH = "src/data/blog";
 
 const blog = defineCollection({
-  loader: glob({ pattern: "**/[^_]*.md", base: `./${BLOG_PATH}` }),
+  loader: glob({ pattern: "**/[^_]*.{md,mdx}", base: `./${BLOG_PATH}` }),
   schema: ({ image }) =>
     z.object({
       author: z.string().default(SITE.author),
@@ -20,6 +20,12 @@ const blog = defineCollection({
       canonicalURL: z.string().optional(),
       hideEditPost: z.boolean().optional(),
       timezone: z.string().optional(),
+      /// Language code — "en" or "pt". Inferred from the sub-folder when
+      /// missing so existing posts don't need editing.
+      lang: z.enum(["en", "pt"]).optional(),
+      /// Stable id linking a post across translations — when two files share
+      /// translationKey, the header language toggle can jump between them.
+      translationKey: z.string().optional(),
     }),
 });
 

@@ -2,32 +2,94 @@
 import type { CollectionEntry } from "astro:content";
 import { slugifyStr } from "@/utils/slugify";
 import { getPath } from "@/utils/getPath";
-import Datetime from "./Datetime.astro";
 
 type Props = {
   variant?: "h2" | "h3";
+  kicker?: string;
 } & CollectionEntry<"blog">;
 
-const { variant: Heading = "h2", id, data, filePath } = Astro.props;
+const { variant: Heading = "h2", id, data, filePath, kicker } = Astro.props;
+const { title, description, pubDatetime, tags } = data;
 
-const { title, description, ...props } = data;
+// Default kicker derived from the first tag. Editorial feel — "USE CASE · 01"
+// style. Caller can always override with an explicit kicker prop.
+const autoKicker =
+  kicker ?? (tags?.[0] ? tags[0].toUpperCase() : "DISPATCH");
+const formattedDate = pubDatetime
+  ? new Date(pubDatetime).toLocaleDateString("en-US", {
+      month: "short",
+      day: "2-digit",
+      year: "numeric",
+    })
+  : "";
 ---
 
-<li class="my-6">
+<article class="ed-card">
   <a
     href={getPath(id, filePath)}
-    class:list={[
-      "inline-block text-lg font-medium text-accent",
-      "decoration-dashed underline-offset-4 hover:underline",
-      "focus-visible:no-underline focus-visible:underline-offset-0",
-    ]}
+    class="ed-card-link"
+    aria-label={title}
   >
+    <span class="kicker">{autoKicker}</span>
     <Heading
+      class="ed-title"
       style={{ viewTransitionName: slugifyStr(title.replaceAll(".", "-")) }}
     >
       {title}
     </Heading>
+    <p class="ed-dek">{description}</p>
+    <span class="ed-meta mono">
+      {formattedDate && <span>{formattedDate}</span>}
+    </span>
   </a>
-  <Datetime {...props} />
-  <p>{description}</p>
-</li>
+</article>
+
+<style>
+  .ed-card {
+    background: var(--background);
+    transition: background 0.2s;
+  }
+
+  .ed-card:hover {
+    background: var(--background-deep);
+  }
+
+  .ed-card-link {
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+    padding: 2.5rem 2rem;
+    min-height: 18rem;
+    color: inherit;
+    text-decoration: none;
+  }
+
+  .ed-title {
+    font-family: var(--font-serif), Georgia, serif;
+    font-weight: 400;
+    font-size: 2.125rem;
+    line-height: 1.1;
+    letter-spacing: -0.025em;
+    color: var(--foreground);
+    margin: 0;
+  }
+
+  .ed-dek {
+    font-size: 1rem;
+    line-height: 1.5;
+    color: var(--muted);
+    margin: 0;
+  }
+
+  .ed-meta {
+    margin-top: auto;
+    display: flex;
+    gap: 1rem;
+  }
+
+  @media (min-width: 640px) {
+    .ed-card-link {
+      padding: 2.5rem;
+    }
+  }
+</style>

@@ -2,10 +2,14 @@ import rss from "@astrojs/rss";
 import { getCollection } from "astro:content";
 import { getPath } from "@/utils/getPath";
 import getSortedPosts from "@/utils/getSortedPosts";
+import getPostsByLang from "@/utils/getPostsByLang";
 import { SITE } from "@/config";
 
 export async function GET() {
-  const posts = await getCollection("blog");
+  // Default RSS feed carries the EN posts. A PT feed at /pt/rss.xml can be
+  // added later by mirroring this handler with `lang: "pt"`.
+  const all = await getCollection("blog");
+  const posts = getPostsByLang(all, "en");
   const sortedPosts = getSortedPosts(posts);
   return rss({
     title: SITE.title,

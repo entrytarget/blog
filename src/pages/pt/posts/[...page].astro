@@ -12,9 +12,9 @@ import getPostsByLang from "@/utils/getPostsByLang";
 import { SITE } from "@/config";
 
 export const getStaticPaths = (async ({ paginate }) => {
-  // EN-only listing; /pt/posts/ has its own paginated mirror.
+  // PT paginated listing — mirror of /posts/[...page] for portuguese content.
   const all = await getCollection("blog", ({ data }) => !data.draft);
-  const posts = getPostsByLang(all, "en");
+  const posts = getPostsByLang(all, "pt");
   return paginate(getSortedPosts(posts), { pageSize: SITE.postPerPage });
 }) satisfies GetStaticPaths;
 
@@ -22,8 +22,8 @@ const { page } = Astro.props;
 ---
 
 <Layout title={`Posts | ${SITE.title}`}>
-  <Header />
-  <Main pageTitle="Posts" pageDesc="All the articles I've posted.">
+  <Header activeNav="posts" lang="pt" />
+  <Main pageTitle="Posts" pageDesc="Todos os artigos publicados.">
     <ul>
       {page.data.map(data => <Card {...data} />)}
     </ul>
